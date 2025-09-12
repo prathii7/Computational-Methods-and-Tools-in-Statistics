@@ -5,4 +5,4 @@ This repository contains my coursework for **STATS 506** at the University of Mi
 All assignments and reports are implemented in **R** (with Quarto/Markdown for writeups).
 
 ## Structure
-- `Assignment1/` — Data cleaning, t-tests, string filtering, Collatz conjecture.
+- [Assignment1](Assignment1/) — Data cleaning, t-tests, string filtering, Collatz conjecture.
