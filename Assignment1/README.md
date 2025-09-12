@@ -1,4 +1,4 @@
-#### Assignment 1
+### Assignment 1
 
 In this assignment I worked on three problems.  
 
