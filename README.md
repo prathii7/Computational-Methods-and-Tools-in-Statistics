@@ -6,3 +6,4 @@ All assignments and reports are implemented in **R**.
 
 ## Assignments
 - [Assignment1](Assignment1/) — Data cleaning, t-tests, string filtering, Collatz conjecture
+- [Assignment1](Assignment2/) — Random walk simulation, Monte Carlo, Regression on YouTube ads
