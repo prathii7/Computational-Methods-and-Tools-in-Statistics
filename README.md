@@ -5,5 +5,5 @@ This repository contains my coursework for **STATS 506** at the University of Mi
 All assignments and reports are implemented in **R**.
 
 ## Assignments
-- [Assignment1](Assignment1/) — Data cleaning, t-tests, string filtering, Collatz conjecture
-- [Assignment1](Assignment2/) — Random walk simulation, Monte Carlo, Regression on YouTube ads
+- [Assignment1](./Assignment1) — Data cleaning, t-tests, string filtering, Collatz conjecture
+- [Assignment2](./Assignment2) — Random walk simulation, Monte Carlo, Regression on YouTube ads
