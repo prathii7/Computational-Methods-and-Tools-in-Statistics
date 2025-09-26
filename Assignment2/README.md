@@ -1,4 +1,4 @@
-Assignment2 — STATS 506
+**Assignment2 — STATS 506**
 
 In this assignment I worked on three problems.
 
@@ -15,7 +15,7 @@ Problem 2: Mean of Mixture of Distributions
 - Estimated average cars/day across 100,000 simulated days (~264).
 
 
-### Problem 3: Linear Regression (YouTube Superbowl Ads)
+Problem 3: Linear Regression (YouTube Superbowl Ads)
 - Imported and de-identified YouTube Superbowl ads data.  
 - Explored and log-transformed engagement variables.  
 - Fitted linear regression models with ad features + year.  
