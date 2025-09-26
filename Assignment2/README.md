@@ -1,4 +1,4 @@
-**Assignment2 — STATS 506**
+#### Assignment2
 
 In this assignment I worked on three problems.
 
