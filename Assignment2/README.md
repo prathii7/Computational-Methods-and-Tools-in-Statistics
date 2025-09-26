@@ -20,4 +20,4 @@ Problem 3: Linear Regression (YouTube Superbowl Ads)
 - Explored and log-transformed engagement variables.  
 - Fitted linear regression models with ad features + year.  
 - Found that year was significantly associated with engagement.  
-- Reproduced OLS coefficients manually using matrix algebra and matched `lm()`.
+- Reproduced OLS coefficients manually using matrix algebra and matched lm().
