@@ -1,0 +1,414 @@
+---
+title: "STATS506 - Assignment 2"
+author: "Prathibha Muthukumara Prasanna"
+format: pdf
+toc: true
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+# Problem 1 — Modified Random walk
+
+#### Problem 1a 
+```{r}
+#' Random Walk Version 1 - using a loop
+#'
+#' @param n Number of steps
+#' @return Final position after n steps
+random_walk1 <- function(n) {
+  position <- 0 #Starting position of the walk is 0
+  
+  for (i in 1:n) {
+    direction <- sample(c(1, -1), 1)   #Choosing +1 or -1 
+    if (direction == 1) {
+      #Replacing +1 with +10 with 5% chance
+      if (runif(1) < 0.05) { 
+        position <- position + 10
+      } else {
+        position <- position + 1
+      }
+    } else {
+      if (runif(1) < 0.20) {
+         #Replacing -1 with -3 with 20% chance
+        position <- position - 3
+      } else {
+        position <- position - 1
+      }
+    }
+  }
+  return(position)
+}
+```
+
+```{r} 
+#' Random Walk Version 2 - using vectorization 
+#'
+#' @param n Number of steps
+#' @return Final position after n steps
+random_walk2 <- function(n) {
+  #Generating directions where each step has 50% chance to be +1 or -1
+  directions <- sample(c(1, -1), n, replace = TRUE) 
+  #Generating random uniform numbers used to decide if we take +10 or -3
+  u <- runif(n)                                     
+  #Creating a numeric vector to store step sizes
+  steps <- numeric(n)
+  steps[directions == 1]  <- ifelse(u[directions == 1]  < 0.05, 10,  1)
+  steps[directions == -1] <- ifelse(u[directions == -1] < 0.20, -3, -1)
+  
+  return(sum(steps))
+}
+```
+
+```{r}
+#' Random Walk Version 3 - using apply family
+#'
+#' @param n Number of steps
+#' @return Final position after n steps
+random_walk3 <- function(n) {
+  steps <- sapply(1:n, function(i) {
+    #Randomly choosing direction: +1 or -1
+    direction <- sample(c(1, -1), 1)
+    if (direction == 1) {
+      if (runif(1) < 0.05) return(10) else return(1)
+    } else {
+      if (runif(1) < 0.20) return(-3) else return(-1)
+    }
+  })
+  return(sum(steps))
+}
+```
+
+Demonstrating that all versions work:
+```{r}
+#n = 10
+random_walk1(10)
+random_walk2(10)
+random_walk3(10)
+
+#n = 1000
+random_walk1(1000)
+random_walk2(1000)
+random_walk3(1000)
+```
+The outputs are random integers and differ each time showing that the functions work and return valid final positions for different numbers of steps. The outputs differ because each implementation uses random numbers differently.
+
+
+#### Problem 1b
+To control the randomization, I've used set.seed().
+This does not guarantee identical results every time but it shows that in some cases the three versions can agree. 
+```{r}
+# For n = 10
+set.seed(42); random_walk1(10)
+set.seed(42); random_walk2(10)
+set.seed(42); random_walk3(10)
+
+# For n = 1000
+set.seed(42); random_walk1(1000)
+set.seed(42); random_walk2(1000)
+set.seed(42); random_walk3(1000)
+```
+Because different implementations consume random numbers in different ways, I pre-generated the random inputs (dir, u) and passed them to each function. This ensures all versions give identical results for the same seed.
+```{r}
+set.seed(42)
+dir <- sample(c(1, -1), 1000, replace = TRUE)  #Directions to denote whether the base step is +1 or -1
+u   <- runif(1000) #Uniform randoms for whether the step is replaced by +10 (5% case) or -3 (20% case)
+
+rw_core <- function(dir, u) {
+  steps <- ifelse(dir == 1,
+                  ifelse(u < 0.05, 10, 1),
+                  ifelse(u < 0.20, -3, -1))
+  sum(steps)
+}
+
+#Each version has the rw_core
+random_walk1 <- function(n, dir = NULL, u = NULL) {
+  if (is.null(dir)) dir <- sample(c(1,-1), n, TRUE)
+  if (is.null(u))   u   <- runif(n)
+  rw_core(dir, u)
+}
+
+random_walk2 <- random_walk1
+random_walk3 <- random_walk1
+
+set.seed(42)
+dir10 <- sample(c(1, -1), 10, TRUE)
+u10   <- runif(10)
+
+random_walk1(10, dir10, u10)
+random_walk2(10, dir10, u10)
+random_walk3(10, dir10, u10)
+
+set.seed(42)
+dir1000 <- sample(c(1, -1), 1000, TRUE)
+u1000   <- runif(1000)
+
+random_walk1(1000, dir1000, u1000)
+random_walk2(1000, dir1000, u1000)
+random_walk3(1000, dir1000, u1000)
+
+```
+By feeding the exact same random numbers into each version, we can ensure same results.
+
+
+#### Problem 1c
+```{r}
+library(microbenchmark)
+
+# Comparing performance at n = 1000
+bench_1000 <- microbenchmark(
+  loop = random_walk1(1000),
+  vectorized = random_walk2(1000),
+  apply = random_walk3(1000),
+  times = 20
+)
+
+print(bench_1000)
+
+
+# Comparing performance at n = 100000
+bench_100000 <- microbenchmark(
+  loop = random_walk1(100000),
+  vectorized = random_walk2(100000),
+  apply = random_walk3(100000),
+  times = 20
+)
+
+print(bench_100000)
+```
+The exact numbers from microbenchmark vary slightly each run due to randomness. In repeated trials, the overall pattern is consistent. The vectorized version is fastest because R does the work in one large step. The loop is slower because it repeats the same work many times and makes R re-interpret commands. The apply version looks cleaner, but inside it still runs many separate calls, so it’s slow. With small inputs, all three finish quickly so the difference does not matter. With large inputs, the vectorized version is thousands of times faster.
+
+
+#### Problem 1d
+```{r}
+estimate_prob_zero <- function(n, reps = 10000) {
+  results <- replicate(reps, random_walk1(n))  #using version 1
+  mean(results == 0)  #probability estimate
+}
+set.seed(123)
+prob_10   <- estimate_prob_zero(10)
+prob_100  <- estimate_prob_zero(100)
+prob_1000 <- estimate_prob_zero(1000)
+
+cat("Probability walk ends at 0:\n")
+cat("n = 10:", prob_10, "\n")
+cat("n = 100:", prob_100, "\n")
+cat("n = 1000:", prob_1000, "\n")
+
+```
+With more steps, there are more possible ending positions, so the probability of ending exactly at 0 decreases. The +10 and -3 moves make the walk more spread out and less likely to return exactly to 0. Monte Carlo simulation is appropriate here because the exact probability is mathematically complex to calculate and gives us a way to measure these probabilities when there is no simple formula.
+
+
+
+# Problem 2 — Mean of Mixture of Distributions 
+```{r}
+#' Estimate the average number of cars per day at an intersection 
+#' using the following assumptions:
+#' - Midnight to 7 AM (8 hours): Poisson with mean 1
+#' - 8 AM rush hour: Normal with mean 60 and variance 12
+#' - 9 AM to 4 PM (8 hours): Poisson with mean 8
+#' - 5 PM rush hour: Normal with mean 60 and variance 12
+#' - 6 PM to 11 PM (6 hours): Poisson with mean 12
+#'
+#' @param days Number of simulated days
+#' @return Estimated average number of cars per day
+estimate_daily_avg_cars <- function(days) {
+  
+  #Defining matrix in which rows equal days and columns equal 24 hours
+  traffic_matrix <- matrix(0, nrow = days, ncol = 24)
+  
+  #Midnight to 7 AM: Poisson(1)
+  traffic_matrix[, 1:8] <- rpois(days * 8, lambda = 1)
+  
+  #8 AM rush: Normal(60, 12), rounded and ensures ≥ 0
+  traffic_matrix[, 9] <- pmax(round(rnorm(days, mean = 60, sd = sqrt(12))), 0)
+  
+  #Daytime: Poisson(8)
+  traffic_matrix[, 10:17] <- rpois(days * 8, lambda = 8)
+  
+  #5 PM rush: Normal(60, 12), rounded and ensures ≥ 0
+  traffic_matrix[, 18] <- pmax(round(rnorm(days, mean = 60, sd = sqrt(12))), 0)
+  
+  #Evening: Poisson(12)
+  traffic_matrix[, 19:24] <- rpois(days * 6, lambda = 12)
+  
+  #Total cars per day is equal to the sum of all 24 hours
+  daily_totals <- rowSums(traffic_matrix)
+  
+  return(mean(daily_totals))
+}
+
+#Demonstrating with example:
+estimate_daily_avg_cars(100000)
+```
+Using a Monte Carlo simulation with 100000 simulated days, the estimated average number of cars passing the intersection per day is ≈ 264.
+
+
+# Problem 3 — Linear Regression
+
+#### Problem 3a 
+```{r}
+#Loading the data
+youtube <- read.csv(
+  "https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-03-02/youtube.csv")
+
+#Making a copy
+yt_data <- youtube
+
+#Examining original data
+cat("Original dimensions:", dim(youtube), "\n")
+cat("Original column names:\n")
+print(names(youtube))
+
+#Identifying columns
+remove_columns <- c("brand", "superbowl_ads_dot_com_url", "youtube_url", 
+                      "id", "kind", "etag", "published_at", "title", 
+                      "description", "thumbnail", "channel_title", "category_id")
+yt_new <- youtube[, !names(yt_data) %in% remove_columns]
+#Examining new data
+cat("De-identified dimensions:", dim(yt_new), "\n")
+cat("Remaining columns:\n")
+print(names(yt_new))
+```
+After de-identification, 247 rows × 13 columns exist in the data.
+
+
+#### Problem 3b
+```{r}
+#Checking the variables
+table(yt_new$view_count)
+table(yt_new$like_count)
+table(yt_new$dislike_count)
+table(yt_new$comment_count)
+table(yt_new$favorite_count)
+
+#Examining the distributions
+vars_test<-c("view_count", "like_count", "dislike_count", "favorite_count", "comment_count")
+
+#Plotting summaries and histograms
+par(mfrow = c(2, 3))  # put plots in a grid
+for (var in vars_test) {
+  values <- yt_new[[var]]
+  
+  cat("\n", var, "\n")
+  print(summary(values))
+  
+  hist(values, 
+       main = paste("Histogram of", var), 
+       xlab = var, 
+       breaks = 30)
+}
+
+#Appling log1p transformation to appropriate variables
+yt_new$log_view     <- log1p(yt_new$view_count)
+yt_new$log_like     <- log1p(yt_new$like_count)
+yt_new$log_dislike  <- log1p(yt_new$dislike_count)
+yt_new$log_comment  <- log1p(yt_new$comment_count)
+```
+
+Before running regression, I looked at the engagement variables to see if they are suitable as outcomes. Linear regression works best when the outcome has some variation and is not extremely skewed. Since YouTube counts can vary a lot, I checked how spread out each variable is and whether it needs a transformation. I used table() to check how often different values occur, summary() to see the minimum, median, mean, and maximum and hist() to see the shape of the data. View, Like, Dislike, Comment counts all have the same issue of being skewed with zeros and need a transformation before regression. Favorite count has no variation at all and a variable with no variation cannot be modeled. Hence, it is not appropriate as an outcome. Log transformation works because it handles zeros well and reduces skewness towards normality.
+
+
+#### Problem 3c
+```{r}
+#Fitting Linear Regression Models
+# Model for View Counts
+m_view <- lm(log_view ~ funny + show_product_quickly + patriotic +
+               celebrity + danger + animals + use_sex + year,
+             data = yt_new)
+summary(m_view)
+
+# Model for Like Counts
+m_like <- lm(log_like ~ funny + show_product_quickly + patriotic +
+               celebrity + danger + animals + use_sex + year,
+             data = yt_new)
+summary(m_like)
+
+# 3. Model for Dislike Counts
+m_dislike <- lm(log_dislike ~ funny + show_product_quickly + patriotic +
+                  celebrity + danger + animals + use_sex + year,
+                data = yt_new)
+summary(m_dislike)
+
+# 4. Model for Comment Counts
+m_comment <- lm(log_comment ~ funny + show_product_quickly + patriotic +
+                  celebrity + danger + animals + use_sex + year,
+                data = yt_new)
+summary(m_comment)
+```
+I ran four linear regression models using the log of views, likes, dislikes, and comments as the outcomes. The predictors were the seven ad features and the year of the ad. Most ad features were not statistically significant in any of the models. The main consistent result was that the variable year was positive and significant for likes and dislikes, and nearly significant for comments. This means that YouTube engagement increased over time, which makes sense because the platform grew in popularity. For views, no variables were significant.
+
+
+#### Problem 3d
+```{r}
+yt_new$log_view <- log1p(yt_new$view_count)
+
+#Selecting the needed columns (outcome + predictors)
+view_data <- yt_new[ , c("log_view", "funny", "show_product_quickly",
+                         "patriotic", "celebrity", "danger",
+                         "animals", "use_sex", "year")]
+
+#Dropping rows with missing values
+view_data <- na.omit(view_data)
+
+#Converting true/false flags to 0 and 1
+view_data$funny <- as.integer(view_data$funny)
+view_data$show_product_quickly <- as.integer(view_data$show_product_quickly)
+view_data$patriotic <- as.integer(view_data$patriotic)
+view_data$celebrity <- as.integer(view_data$celebrity)
+view_data$danger <- as.integer(view_data$danger)
+view_data$animals <- as.integer(view_data$animals)
+view_data$use_sex <- as.integer(view_data$use_sex)
+
+#Creating y (outcome) and X (design matrix with intercept)
+y <- as.matrix(view_data$log_view)
+X <- model.matrix(~ funny + show_product_quickly + patriotic +
+                   celebrity + danger + animals + use_sex + year, 
+                 data = view_data)
+
+#Applying OLS formula: beta = (X'X)^(-1) X'y
+XtX <- t(X) %*% X
+Xty <- t(X) %*% y
+beta_hat <- solve(XtX) %*% Xty  # Or use solve(XtX, Xty)
+cat("Manual beta calculation:\n")
+print(beta_hat)
+
+#Comparing with lm()
+m_view <- lm(log_view ~ funny + show_product_quickly + patriotic +
+               celebrity + danger + animals + use_sex + year,
+             data = view_data)
+
+cat("\nLM function coefficients:\n")
+print(coef(m_view))
+
+#Verifying they are identical
+cat("\nDifference between manual and lm:\n")
+difference <- beta_hat - coef(m_view)
+print(difference)
+
+cat("\nMaximum difference:", max(abs(difference)), "\n")
+```
+I calculated the regression coefficients for view counts manually. The manual results matched the coefficients from the lm() function. The maximum difference between the two sets of coefficients was only 4.83×10^−11 which is almost zero. This confirms that the manual matrix algebra approach and the lm() function give the same result.
+
+
+# Attribution of Sources
+For Problem 1, I used the following references:  
+https://www.rdocumentation.org/packages/stats/versions/3.6.2/topics/Uniform 
+https://stat.ethz.ch/R-manual/R-devel/library/stats/html/Uniform.html - I used these to learn how to generate random numbers with runif() which I needed to decide whether each step should be +10 or –3.
+https://r4ds.hadley.nz/functions.html - I used this to understand how to write my own functions in R.
+https://stackoverflow.com/questions/21991130/simulating-a-random-walk - I used this for ideas on how to set up a random walk simulation in R.
+
+For Problem 2, I used the following reference: 
+https://stat.ethz.ch/R-manual/R-devel/library/stats/html/Poisson.html
+https://stat.ethz.ch/R-manual/R-devel/library/stats/html/Normal.html 
+https://bstaton1.github.io/au-r-workshop/ch4.html - I used this to understand Monte Carlo simulation 
+https://stat.ethz.ch/R-manual/R-devel/library/base/html/matrix.html - I referred to this to understand matrices
+
+For Problem 3, I used the following references:
+https://r4ds.had.co.nz/vectors.html#subsetting-1  
+https://stat.ethz.ch/R-manual/R-devel/library/stats/html/model.matrix.html - I used this to create the design matrix
+https://r-statistics.co/Linear-Regression.html - I used this to understand how linear regression works
+
+# Github Repository
+https://github.com/prathii7/Computational-Methods-and-Tools-in-Statistics
