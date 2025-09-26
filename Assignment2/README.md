@@ -1,4 +1,4 @@
-# Assignment 2 — STATS 506
+# Assignment2 — STATS 506
 
 In this assignment I worked on three problems.
 
@@ -25,9 +25,3 @@ In this assignment I worked on three problems.
 - Fitted linear regression models with ad features + year.  
 - Found that year was significantly associated with engagement.  
 - Reproduced OLS coefficients manually using matrix algebra and matched `lm()`.
-
----
-
-### Files
-- [Assignment 2 Report (PDF)](./STATS506_Assignment2.pdf)  
-- [Assignment 2 Code (Quarto)](./Assignment2.qmd)  
