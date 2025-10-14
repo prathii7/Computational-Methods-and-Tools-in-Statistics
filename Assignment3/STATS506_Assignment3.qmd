@@ -1,0 +1,721 @@
+---
+title: "STATS506 - Assignment 3"
+author: "Prathibha Muthukumara Prasanna"
+format: 
+  html:
+    embed-resources: true
+    code-fold: true
+toc: true
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+# Problem 1 
+
+#### Problem 1a 
+```{r}
+library(haven)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+# Reading files from the URLs using read_xpt()
+aux_i <- read_xpt("https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2015/DataFiles/AUX_I.xpt")
+demo_i <- read_xpt("https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2015/DataFiles/DEMO_I.xpt")
+
+# Merging the datasets using SEQN variable
+merged_data <- inner_join(aux_i, demo_i, by = "SEQN")
+
+# Creating a table to display results 
+kable(
+  data.frame(
+    File = c("AUX_I", "DEMO_I", "Merged"),
+    Rows = c(nrow(aux_i), nrow(demo_i), nrow(merged_data)),
+    Columns = c(ncol(aux_i), ncol(demo_i), ncol(merged_data))
+  ),
+  caption = "Dataset dimensions before and after merging",
+  align = "lcc"
+) %>%
+  kable_styling(full_width = FALSE, position = "center", font_size = 14)
+
+# Printing the dimensions of the merged dataset  
+cat("\nMerged dataset has", nrow(merged_data), "rows and", ncol(merged_data), "columns.\n")
+```
+
+The SAS files have been read directly from the URLs into R as data frames. Both datasets share a unique participant ID called SEQN. Using inner_join() from dplyr, the code merges only those rows that appear in both datasets. The merged dataset represents participants who completed the audiometry examination and also have demographic information recorded. Since the audiometry file (AUX_I) includes only those who took the test, the merged dataset has the same 4,582 participants as AUX_I. The number of columns becomes 119 because the shared ID column SEQN appears in both files and is only kept once.
+
+#### Problem 1b
+```{r} 
+# Gender: RIAGENDR 
+merged_data <- merged_data %>%
+  mutate(
+    Gender = case_when(
+      RIAGENDR == 1 ~ "Male",
+      RIAGENDR == 2 ~ "Female",
+      TRUE ~ NA_character_
+    ),
+    Gender = factor(Gender, levels = c("Male", "Female"))
+  )
+
+# Citizenship status: DMDCITZN 
+merged_data <- merged_data %>%
+  mutate(
+    Citizenship = case_when(
+      DMDCITZN == 1 ~ "Citizen by birth/naturalization",
+      DMDCITZN == 2 ~ "Not a citizen",
+      DMDCITZN %in% c(7, 9) ~ NA_character_,
+      TRUE ~ NA_character_
+    ),
+    Citizenship = factor(
+      Citizenship, 
+      levels = c("Citizen by birth/naturalization", "Not a citizen")
+    )
+  )
+
+# Number of children ≤5 years: DMDHHSZA 
+merged_data <- merged_data %>%
+  mutate(
+    NumChildren_U5 = case_when(
+      DMDHHSZA == 0 ~ "0",
+      DMDHHSZA == 1 ~ "1", 
+      DMDHHSZA == 2 ~ "2",
+      DMDHHSZA == 3 ~ "3 or more",
+      TRUE ~ NA_character_
+    ),
+    NumChildren_U5 = factor(NumChildren_U5, 
+                           levels = c("0", "1", "2", "3 or more"),
+                           ordered = TRUE)
+  )
+
+# Annual household income: INDHHIN2
+merged_data <- merged_data %>%
+  mutate(
+    HouseholdIncome = case_when(
+      INDHHIN2 == 1  ~ "$0–$4,999",
+      INDHHIN2 == 2  ~ "$5,000–$9,999",
+      INDHHIN2 == 3  ~ "$10,000–$14,999",
+      INDHHIN2 == 4  ~ "$15,000–$19,999",
+      INDHHIN2 == 5  ~ "$20,000–$24,999",
+      INDHHIN2 == 6  ~ "$25,000–$34,999",
+      INDHHIN2 == 7  ~ "$35,000–$44,999",
+      INDHHIN2 == 8  ~ "$45,000–$54,999",
+      INDHHIN2 == 9  ~ "$55,000–$64,999",
+      INDHHIN2 == 10 ~ "$65,000–$74,999",
+      INDHHIN2 == 14 ~ "$75,000–$99,999",
+      INDHHIN2 == 15 ~ "$100,000 and over",
+      INDHHIN2 %in% c(12, 13, 77, 99) ~ NA_character_,
+      TRUE ~ NA_character_
+    ),
+    HouseholdIncome = factor(
+      HouseholdIncome,
+      levels = c(
+        "$0–$4,999", "$5,000–$9,999", "$10,000–$14,999", 
+        "$15,000–$19,999", "$20,000–$24,999", "$25,000–$34,999", 
+        "$35,000–$44,999", "$45,000–$54,999", "$55,000–$64,999", 
+        "$65,000–$74,999", "$75,000–$99,999", "$100,000 and over"
+      ),
+      ordered = TRUE
+    )
+  )
+
+```
+The four demographic variables were cleaned using the NHANES 2015–2016 codebook. Gender was coded as "Male" (n=2,176) or "Female" (n=2,406) with no missing values. Citizenship status was coded as "Citizen by birth/naturalization" (n=3,684) or "Not a citizen" (n=884), with refused and "Don't know" responses set to missing (14 missing values). Number of children ≤5 years was ordered as "0" (n=3,463), "1" (n=737), "2" (n=317), or "3 or more" (n=65) with no missing values. Annual household income was ordered into 12 income ranges from "$0–$4,999" to "$100,000 and over"; the original data contained overlapping categories (such as "$20,000 and Over" and "Under $20,000") that duplicated specific ranges, so these overlapping categories along with refused and "Don't know" responses were excluded and set to missing (495 missing values total).
+
+#### Problem 1c
+```{r}
+modeling_data <- merged_data %>%
+  mutate(
+    # Converting NumChildren_U5 to numeric (0, 1, 2, 3)
+    NumChildren_continuous = case_when(
+      NumChildren_U5 == "0" ~ 0,
+      NumChildren_U5 == "1" ~ 1,
+      NumChildren_U5 == "2" ~ 2,
+      NumChildren_U5 == "3 or more" ~ 3,
+      TRUE ~ NA_real_
+    ),
+    # Converting HouseholdIncome to numeric using midpoint of ranges
+    Income_continuous = case_when(
+      HouseholdIncome == "$0–$4,999" ~ 2.5,
+      HouseholdIncome == "$5,000–$9,999" ~ 7.5,
+      HouseholdIncome == "$10,000–$14,999" ~ 12.5,
+      HouseholdIncome == "$15,000–$19,999" ~ 17.5,
+      HouseholdIncome == "$20,000–$24,999" ~ 22.5,
+      HouseholdIncome == "$25,000–$34,999" ~ 30,
+      HouseholdIncome == "$35,000–$44,999" ~ 40,
+      HouseholdIncome == "$45,000–$54,999" ~ 50,
+      HouseholdIncome == "$55,000–$64,999" ~ 60,
+      HouseholdIncome == "$65,000–$74,999" ~ 70,
+      HouseholdIncome == "$75,000–$99,999" ~ 87.5,
+      HouseholdIncome == "$100,000 and over" ~ 125, 
+      TRUE ~ NA_real_
+    ),
+    # Scaling income to be in units of $1000 
+    Income_continuous = Income_continuous / 1000
+  )
+
+# Fitting Model 1R
+model_1R <- glm(AUXTWIDR ~ Gender, 
+                data = modeling_data, 
+                family = poisson(link = "log"))
+
+# Fitting Model 2R
+model_2R <- glm(AUXTWIDR ~ Gender + Citizenship + NumChildren_continuous + Income_continuous,
+                data = modeling_data,
+                family = poisson(link = "log"))
+
+# Fitting Model 1L
+model_1L <- glm(AUXTWIDL ~ Gender,
+                data = modeling_data,
+                family = poisson(link = "log"))
+
+# Fitting Model 2L
+model_2L <- glm(AUXTWIDL ~ Gender + Citizenship + NumChildren_continuous + Income_continuous,
+                data = modeling_data,
+                family = poisson(link = "log"))
+
+# Function to extract IRRs and model info
+extract_results <- function(model, label) {
+  results <- data.frame(
+    Model = label,
+    Term = names(coef(model)),
+    IRR = round(exp(coef(model)), 3),
+    Std_Error = round(summary(model)$coefficients[, "Std. Error"], 3),
+    p_value = round(summary(model)$coefficients[, "Pr(>|z|)"], 3),
+    AIC = round(AIC(model), 1),
+    PseudoR2 = round(1 - model$deviance / model$null.deviance, 3),
+    N = nobs(model),
+    row.names = NULL
+  )
+  
+  # Renaming predictors
+  results$Term <- gsub("GenderFemale", "Gender", results$Term)
+  results$Term <- gsub("CitizenshipNot a citizen", "Citizenship", results$Term)
+  results$Term <- gsub("NumChildren_continuous", "Number of Children", results$Term)
+  results$Term <- gsub("Income_continuous", "Income", results$Term)
+  results$Model[-1] <- ""
+  return(results)
+}
+
+results_all <- rbind(
+  extract_results(model_1R, "Right Ear (Gender)"),
+  extract_results(model_2R, "Right Ear (Full Model)"),
+  extract_results(model_1L, "Left Ear (Gender)"),
+  extract_results(model_2L, "Left Ear (Full Model)")
+)
+
+results_all %>%
+  kable(
+    caption = "Poisson Regression Results for Tympanometric Width",
+    col.names = c("Model", "Predictor", "IRR", "Std. Error", "p-value", 
+                  "AIC", "Pseudo R²", "N"),
+    align = c("l", "l", "c", "c", "c", "c", "c", "c"),
+    row.names = FALSE  # Add this line to remove row names from table
+  ) %>%
+  kable_styling(full_width = FALSE, position = "center", font_size = 13)
+
+```
+Four Poisson regression models were fitted to predict tympanometric width in the right and left ears. Number of children was converted to a continuous numeric variable (0, 1, 2, 3), and household income was converted to continuous by using the midpoint of each income range, scaled to thousands of dollars. The table presents IRRs obtained by exponentiating the model coefficients, along with standard errors, p-values, and model statistics (sample size, Pseudo R², and AIC).
+
+#### Problem 1d
+```{r}
+# Extracting the coefficient summary for the gender variable
+summary_2L <- summary(model_2L)
+gender_coef <- summary_2L$coefficients["GenderFemale", ]
+
+# Displaying Wald test results
+cat("Coefficient (log scale):", round(gender_coef["Estimate"], 4), "\n")
+cat("Standard Error:", round(gender_coef["Std. Error"], 4), "\n")
+cat("Z-statistic:", round(gender_coef["z value"], 4), "\n")
+cat("P-value:", round(gender_coef["Pr(>|z|)"], 4), "\n")
+cat("IRR (Female vs Male):", round(exp(gender_coef["Estimate"]), 4), "\n\n")
+
+# Creating prediction data for a typical male and female
+pred_data <- data.frame(
+  Gender = factor(c("Male", "Female"), levels = c("Male", "Female")),
+  Citizenship = factor(rep("Citizen by birth/naturalization", 2),
+                      levels = c("Citizen by birth/naturalization", "Not a citizen")),
+  NumChildren_continuous = rep(mean(modeling_data$NumChildren_continuous, na.rm = TRUE), 2),
+  Income_continuous = rep(mean(modeling_data$Income_continuous, na.rm = TRUE), 2)
+)
+
+# Getting predicted values
+predictions <- predict(model_2L, newdata = pred_data, type = "response", se.fit = TRUE)
+
+pred_male <- predictions$fit[1]
+pred_female <- predictions$fit[2]
+se_male <- predictions$se.fit[1]
+se_female <- predictions$se.fit[2]
+
+# Calculating difference and test statistic
+diff <- pred_female - pred_male
+se_diff <- sqrt(se_male^2 + se_female^2)
+z_stat <- diff / se_diff
+p_value <- 2 * pnorm(-abs(z_stat))
+
+# Displaying predicted values test results
+cat("Predicted width for males:", round(pred_male, 3), "\n")
+cat("Predicted width for females:", round(pred_female, 3), "\n")
+cat("Difference (Female - Male):", round(diff, 3), "\n")
+cat("SE of difference:", round(se_diff, 3), "\n")
+cat("Z-statistic:", round(z_stat, 4), "\n")
+cat("P-value:", round(p_value, 4), "\n")
+```
+The Wald test examines whether the gender coefficient is significantly different from zero. The IRR for females compared to males is 1.019, indicating that females have approximately 1.9% higher tympanometric width than males, holding other variables constant. With a z-statistic of 5.22 and p-value < 0.001, there is strong statistical evidence of a difference in IRR between males and females.
+At mean values of number of children and income (and citizenship), the predicted tympanometric width for males is 83.86 compared to 85.45 for females, a difference of 1.59 units. The z-test gives a z-statistic of 4.94 with p-value < 0.001, providing strong evidence that predicted tympanometric width differs significantly between males and females.
+
+
+# Problem 2
+
+#### Problem 2a
+```{r}
+library(DBI)
+library(RSQLite)
+library(microbenchmark)
+sakila <- dbConnect(SQLite(), "~/Downloads/sakila_master.db")
+
+customer <- dbGetQuery(sakila, "SELECT * FROM customer")
+
+# Using R to calculate statistics by store
+# Convert active to numeric
+customer$active <- as.numeric(customer$active)
+
+store_counts <- table(customer$store_id)
+active_counts <- tapply(customer$active, customer$store_id, sum)
+percent_active <- round((active_counts / store_counts) * 100, 2)
+
+result_r <- data.frame(
+  store_id = names(store_counts),
+  total_customers = as.numeric(store_counts),
+  active_customers = as.numeric(active_counts),
+  percent_active = as.numeric(percent_active)
+)
+
+result_r
+
+```
+
+The customer table was extracted from the database using SQL, then R operations were used to calculate the statistics. The active column was converted from character to numeric. Using `table()` to count customers per store and `tapply()` to sum active customers by store:
+Store 1 has 326 total customers with 318 active (97.55% active rate) and Store 2 has 273 total customers with 266 active (97.44% active rate)
+
+```{r}
+result_sql <- dbGetQuery(sakila, "
+SELECT 
+  store_id,
+  COUNT(*) AS total_customers,
+  SUM(active) AS active_customers,
+  ROUND(SUM(active) * 100.0 / COUNT(*), 2) AS percent_active
+FROM customer
+GROUP BY store_id
+")
+result_sql
+```
+The same results were obtained using a single SQL query that performs all calculations directly in the database. The query uses `COUNT(*)` for total customers, `SUM(active)` for active customers, and calculates the percentage in one step using `GROUP BY store_id`. This approach produces identical results: Store 1 with 326 customers (97.55% active) and Store 2 with 273 customers (97.44% active).
+
+```{r}
+benchmark_results <- microbenchmark(
+  SQL_plus_R = {
+    customer <- dbGetQuery(sakila, "SELECT * FROM customer")
+    customer$active <- as.numeric(customer$active)
+    store_counts <- table(customer$store_id)
+    active_counts <- tapply(customer$active, customer$store_id, sum)
+    percent_active <- round((active_counts / store_counts) * 100, 2)
+    data.frame(
+      store_id = names(store_counts),
+      total_customers = as.numeric(store_counts),
+      active_customers = as.numeric(active_counts),
+      percent_active = as.numeric(percent_active)
+    )
+  },
+  
+  Single_SQL = {
+    dbGetQuery(sakila, "
+      SELECT 
+        store_id,
+        COUNT(*) AS total_customers,
+        SUM(active) AS active_customers,
+        ROUND(SUM(active) * 100.0 / COUNT(*), 2) AS percent_active
+      FROM customer
+      GROUP BY store_id
+    ")
+  },
+  
+  times = 100
+)
+
+print(benchmark_results)
+```
+The benchmark comparison (100 iterations each) reveals that the SQL + R approach gives: Mean = 1508.74 μs, Median = 878.10 μs while the 
+Single SQL approach gives: Mean = 328.73 μs, Median = 169.82 μs. The Single SQL query is approximately 4.6 times faster (based on mean times) than the SQL + R approach. This performance difference occurs because the Single SQL approach performs all aggregations within the database engine, avoiding the overhead of transferring the entire customer table to R and then performing calculations. 
+
+#### Problem 2b
+```{r}
+staff <- dbGetQuery(sakila, "SELECT * FROM staff")
+address <- dbGetQuery(sakila, "SELECT * FROM address")
+city <- dbGetQuery(sakila, "SELECT * FROM city")
+country <- dbGetQuery(sakila, "SELECT * FROM country")
+
+staff_address <- merge(staff, address, by = "address_id", all.x = TRUE)
+staff_city <- merge(staff_address, city, by = "city_id", all.x = TRUE)
+staff_country <- merge(staff_city, country, by = "country_id", all.x = TRUE)
+
+result_r <- staff_country[, c("first_name", "last_name", "country")]
+
+result_r
+```
+Four tables (staff, address, city, country) were extracted from the database and merged in R using merge(). The staff table was joined with address by address_id, then with city by city_id, and finally with country by country_id. The results show there are 2 staff members: Jon Stephens from Australia and Mike Hillyer from Canada.
+
+```{r}
+result_sql <- dbGetQuery(sakila, "
+SELECT 
+  s.first_name,
+  s.last_name,
+  co.country
+FROM staff AS s
+LEFT JOIN address AS a ON s.address_id = a.address_id
+LEFT JOIN city AS ci ON a.city_id = ci.city_id
+LEFT JOIN country AS co ON ci.country_id = co.country_id
+")
+
+result_sql
+```
+The same results were obtained using a single SQL query with three LEFT JOINs to connect staff → address → city → country. This returns the same 2 staff members with their names and countries.
+
+```{r}
+benchmark_results <- microbenchmark(
+  SQL_plus_R = {
+    staff <- dbGetQuery(sakila, "SELECT * FROM staff")
+    address <- dbGetQuery(sakila, "SELECT * FROM address")
+    city <- dbGetQuery(sakila, "SELECT * FROM city")
+    country <- dbGetQuery(sakila, "SELECT * FROM country")
+    
+    staff_address <- merge(staff, address, by = "address_id", all.x = TRUE)
+    staff_city <- merge(staff_address, city, by = "city_id", all.x = TRUE)
+    staff_country <- merge(staff_city, country, by = "country_id", all.x = TRUE)
+    
+    staff_country[, c("first_name", "last_name", "country")]
+  },
+  
+  Single_SQL = {
+    dbGetQuery(sakila, "
+      SELECT 
+        s.first_name,
+        s.last_name,
+        co.country
+      FROM staff AS s
+      LEFT JOIN address AS a ON s.address_id = a.address_id
+      LEFT JOIN city AS ci ON a.city_id = ci.city_id
+      LEFT JOIN country AS co ON ci.country_id = co.country_id
+    ")
+  },
+  
+  times = 100
+)
+
+print(benchmark_results)
+```
+The Single SQL query is approximately 13.8 times faster (based on mean times) than the SQL + R approach. This dramatic performance difference occurs because the SQL + R approach requires fetching four complete tables (staff, address, city, country) from the database and performing multiple merge operations in R, while the Single SQL approach performs all joins within the database engine and returns only the final 2-row result. 
+
+#### Problem 1c
+```{r}
+film <- dbGetQuery(sakila, "SELECT * FROM film")
+inventory <- dbGetQuery(sakila, "SELECT * FROM inventory")
+rental <- dbGetQuery(sakila, "SELECT * FROM rental")
+payment <- dbGetQuery(sakila, "SELECT * FROM payment")
+
+rental_inventory <- merge(rental, inventory, by = "inventory_id", all.x = TRUE)
+rental_film <- merge(rental_inventory, film, by = "film_id", all.x = TRUE)
+rental_payment <- merge(rental_film, payment, by = "rental_id", all.x = TRUE)
+
+max_amount <- max(rental_payment$amount, na.rm = TRUE)
+
+result_r <- rental_payment[rental_payment$amount == max_amount, c("title", "amount")]
+result_r <- unique(result_r)
+
+cat("Maximum rental amount: $", max_amount, "\n\n", sep = "")
+result_r
+```
+
+
+```{r}
+result_sql <- dbGetQuery(sakila, "
+SELECT DISTINCT f.title, p.amount
+FROM film AS f
+JOIN inventory AS i ON f.film_id = i.film_id
+JOIN rental AS r ON i.inventory_id = r.inventory_id
+JOIN payment AS p ON r.rental_id = p.rental_id
+WHERE p.amount = (SELECT MAX(amount) FROM payment)
+ORDER BY f.title
+")
+
+result_sql
+```
+
+```{r}
+benchmark_results <- microbenchmark(
+  SQL_plus_R = {
+    film <- dbGetQuery(sakila, "SELECT * FROM film")
+    inventory <- dbGetQuery(sakila, "SELECT * FROM inventory")
+    rental <- dbGetQuery(sakila, "SELECT * FROM rental")
+    payment <- dbGetQuery(sakila, "SELECT * FROM payment")
+    
+    rental_inventory <- merge(rental, inventory, by = "inventory_id", all.x = TRUE)
+    rental_film <- merge(rental_inventory, film, by = "film_id", all.x = TRUE)
+    rental_payment <- merge(rental_film, payment, by = "rental_id", all.x = TRUE)
+    
+    max_amount <- max(rental_payment$amount, na.rm = TRUE)
+    result <- rental_payment[rental_payment$amount == max_amount, c("title", "amount")]
+    unique(result)
+  },
+  
+  Single_SQL = {
+    dbGetQuery(sakila, "
+      SELECT DISTINCT f.title, p.amount
+      FROM film AS f
+      JOIN inventory AS i ON f.film_id = i.film_id
+      JOIN rental AS r ON i.inventory_id = r.inventory_id
+      JOIN payment AS p ON r.rental_id = p.rental_id
+      WHERE p.amount = (SELECT MAX(amount) FROM payment)
+      ORDER BY f.title
+    ")
+  },
+  
+  times = 100
+)
+
+print(benchmark_results)
+```
+Four tables (film, inventory, rental, payment) were extracted from the database. Multiple merges were performed in R to connect the data: rental was merged with inventory to link rentals to films, then merged with film to get film titles, and finally merged with payment to get payment amounts. The maximum payment amount ($11.99) was identified, and films rented at this price were extracted.
+The analysis found 9 films rented for the highest dollar value of $11.99
+The same results were obtained using a single SQL query with three JOINs (film → inventory → rental → payment) and a subquery to find the maximum payment amount. The query returns the same 9 films rented for $11.99, sorted alphabetically by title.
+The Single SQL query is approximately 52 times faster (based on mean times) than the SQL + R approach. This is the largest performance difference seen so far, occurring because the SQL + R approach requires fetching four large tables (especially rental with 16,044 rows and payment with 16,049 rows) and performing multiple expensive merge operations in R. The Single SQL approach performs all joins and filtering within the database engine.
+
+
+# Problem 3 
+
+#### Problem 3a
+```{r}
+australia <- read.csv("/Users/prathi/Downloads/au-500.csv", stringsAsFactors = FALSE)
+
+is_dot_com <- grepl("\\.com$|\\.com/$", australia$web)
+
+# Counting how many are .com
+com_count <- sum(is_dot_com)
+total_count <- nrow(australia)
+
+# Calculating percentage
+com_percentage <- round((com_count / total_count) * 100, 2)
+
+cat("Total websites:", total_count, "\n")
+cat(".com websites:", com_count, "\n")
+cat("Percentage:", com_percentage, "%\n")
+
+australia$ending <- sub(".*(\\.[a-z\\.]+)$", "\\1", australia$web)
+table(australia$ending)
+
+```
+````{r}
+head(australia$web, 10)
+
+# Since all are Australian domains ending in .au 
+is_com_au <- grepl("\\.com\\.au", australia$web)
+
+com_count <- sum(is_com_au)
+total_count <- nrow(australia)
+com_percentage <- round((com_count / total_count) * 100, 2)
+
+cat("Total websites:", total_count, "\n")
+cat(".com.au websites:", com_count, "\n")
+cat("Percentage:", com_percentage, "%\n")
+
+# Verifying by checking for other types like .net.au, .org.au
+net_count <- sum(grepl("\\.net\\.au", australia$web))
+org_count <- sum(grepl("\\.org\\.au", australia$web))
+
+cat("\n.net.au websites:", net_count, "\n")
+cat(".org.au websites:", org_count, "\n")
+
+````
+All 500 websites in the Australian dataset use the .com.au domain extension. There are no .com, .org.au, or other alternative domain types in this dataset. Therefore, 0% of the websites are .com’s.
+
+#### Problem 3b 
+```{r}
+# Extracting the domain name (everything after the @)
+australia$email_domain <- sub(".*@", "", australia$email)
+
+domain_counts <- table(australia$email_domain)
+
+# Sorting by frequency (descending)
+domain_counts_sorted <- sort(domain_counts, decreasing = TRUE)
+
+# Finding the most common domain
+most_common_domain <- names(domain_counts_sorted)[1]
+most_common_count <- domain_counts_sorted[1]
+
+cat("\nMost common email domain:", most_common_domain, "\n")
+cat("Number of occurrences:", most_common_count, "\n")
+cat("Percentage:", round((most_common_count / nrow(australia)) * 100, 2), "%\n")
+
+top_domains <- data.frame(
+  Domain = names(head(domain_counts_sorted, 10)),
+  Count = as.numeric(head(domain_counts_sorted, 10)),
+  Percentage = round((as.numeric(head(domain_counts_sorted, 10)) / nrow(australia)) * 100, 2)
+)
+
+kable(top_domains,
+      caption = "Top 10 Most Common Email Domains",
+      col.names = c("Email Domain", "Count", "Percentage (%)"),
+      align = c("l", "r", "r"),
+      row.names = FALSE) %>%
+  kable_styling(full_width = FALSE, position = "center")
+```
+The most common email domain is hotmail.com with 114 occurrences (22.8%).
+
+
+#### Problem 3c
+```{r}
+# Checking for any character that is NOT a letter, comma, or space
+has_special_char <- grepl("[^A-Za-z, ]", australia$company_name)
+
+count_with_special <- sum(has_special_char)
+total_companies <- nrow(australia)
+proportion_special <- round((count_with_special / total_companies) * 100, 2)
+
+
+cat("Companies with non-alphabetic characters:", count_with_special, "\n")
+cat("Total companies:", total_companies, "\n")
+cat("Proportion:", proportion_special, "%\n\n")
+
+# Checking for any character that is NOT a letter, comma, space, or ampersand
+has_special_no_amp <- grepl("[^A-Za-z, &]", australia$company_name)
+
+count_with_special_no_amp <- sum(has_special_no_amp)
+proportion_special_no_amp <- round((count_with_special_no_amp / total_companies) * 100, 2)
+
+cat("Companies with non-alphabetic characters:", count_with_special_no_amp, "\n")
+cat("Total companies:", total_companies, "\n")
+cat("Proportion:", proportion_special_no_amp, "%\n\n")
+
+has_special_not_amp <- has_special_char & !has_special_no_amp
+cat("Examples with ampersands (but no other special characters):\n")
+head(australia$company_name[has_special_not_amp], 10)
+
+summary_table <- data.frame(
+  Condition = c("Excluding commas & whitespace", 
+                "Also excluding ampersands"),
+  Count = c(count_with_special, count_with_special_no_amp),
+  Proportion = c(proportion_special, proportion_special_no_amp)
+)
+
+kable(summary_table,
+      caption = "Proportion of Company Names with Non-Alphabetic Characters",
+      col.names = c("Exclusion Condition", "Count", "Proportion (%)"),
+      align = c("l", "r", "r"),
+      row.names = FALSE) %>%
+  kable_styling(full_width = FALSE, position = "center")
+```
+Out of 500 companies, 45 have company names that contain at least one non-alphabetic character (excluding commas and whitespace). These special characters include ampersands, hyphens, periods, apostrophes, and other punctuation marks. Upon excluding ampersands from consideration, only 4 companies (0.8%) have names with other non-alphabetic characters.
+
+#### Problem 3d
+```{r}
+format_to_cell <- function(phone) {
+  phone_clean <- gsub("-", "", phone)
+  
+  # Reformatting to cell phone style: 1234-567-890
+  phone_formatted <- paste0(
+    substr(phone_clean, 1, 4), "-",
+    substr(phone_clean, 5, 7), "-",
+    substr(phone_clean, 8, 10)
+  )
+  
+  return(phone_formatted)
+}
+
+# Reformatting phone1 (landlines) to cell phone format
+australia$phone1 <- format_to_cell(australia$phone1)
+
+# phone2 is already in cell format, so no change needed
+australia$phone2 <- format_to_cell(australia$phone2)
+
+cat("\n\nReformatted phone numbers (all in cell phone format):\n")
+cat("\nFirst 10 from phone1:\n")
+head(australia$phone1, 10)
+cat("\nFirst 10 from phone2:\n")
+head(australia$phone2, 10)
+```
+All phone numbers were reformatted to the cell phone format. The landline phone numbers in phone1 were converted from the format '02-1234-5678' to '0212-345-678' by removing all dashes and reinserting them in the cell phone pattern. The phone2 column already used the cell phone format, so it remained unchanged.
+
+
+#### Problem 3e
+```{r}
+# Extracting apartment numbers
+# Pattern 1: Numbers after # (e.g., "534 Schoenborn St #51")
+# Pattern 2: Just numbers at the very end (e.g., "22222 Acoma St")
+
+# Checking if there's a # in the address
+has_hash <- grepl("#", australia$address)
+
+# For addresses with #, extract number after #
+apt_with_hash <- sub(".*#(\\d+).*", "\\1", australia$address[has_hash])
+
+# For addresses without #, extract number at the end
+apt_no_hash <- sub(".*\\s(\\d+)$", "\\1", australia$address[!has_hash])
+australia$apt_number <- NA
+australia$apt_number[has_hash] <- as.numeric(apt_with_hash)
+australia$apt_number[!has_hash] <- as.numeric(apt_no_hash)
+
+# Filtering out addresses where extraction failed or no apartment number exists
+has_valid_apt <- !is.na(australia$apt_number) & australia$apt_number > 0
+
+cat("\n\nNumber of addresses with apartment numbers:", sum(has_valid_apt), "\n")
+
+examples <- head(which(has_valid_apt), 15)
+for(i in examples) {
+  cat(australia$address[i], "-> Apt #", australia$apt_number[i], "\n")
+}
+
+# Calculating log of apartment numbers
+australia$log_apt <- log(australia$apt_number)
+
+# Creating histogram
+hist(australia$log_apt[has_valid_apt], 
+     main = "Histogram of Log Apartment Numbers",
+     xlab = "Log(Apartment Number)",
+     ylab = "Frequency",
+     col = "lightblue",
+     border = "darkblue",
+     breaks = 20)
+```
+Apartment numbers were extracted from addresses by identifying numbers that appeared after a "#" symbol or at the end of the address string. The natural logarithm was applied to these apartment numbers. The histogram shows that log apartment numbers are fairly evenly distributed across the range, with a peak around log values of 4. This indicates apartment numbers in the dataset vary widely, from single digits to several thousand.
+
+#### Problem 3f
+```{r}
+table(substr(australia$apt_number, 1, 1))
+```
+The apartment numbers show a relatively uniform distribution, rather than the decreasing distribution expected by Benford's Law. This uniform distribution suggests the data does not follow Benford's Law and would not pass as real data. 
+
+
+# Attribution of Sources
+
+Problem 1:
+1. https://haven.tidyverse.org/reference/read_xpt.html - haven package
+2. https://www.geeksforgeeks.org/r-language/how-to-merge-data-in-r-using-r-merge-dplyr-or-data-table/ - merging datasets
+3. https://dplyr.tidyverse.org/reference/case_when.html - case_when() function
+4. https://r4ds.had.co.nz/factors.html - creating factors in R
+5. https://stats.stackexchange.com/questions/46345/how-to-calculate-goodness-of-fit-in-glm-r - Pseudo R-squared
+6. https://www.geeksforgeeks.org/r-machine-learning/how-to-perform-a-wald-test-in-r/ - Wald test
+
+Problem 2:
+Didn't use many resources since I know SQL
+
+Problem 3:
+1. https://stat.ethz.ch/R-manual/R-devel/library/base/html/grep.html - grepl()
+2. https://r4ds.hadley.nz/regexps.html - regex
+3. https://r4ds.had.co.nz/strings.html#matching-patterns-with-regular-expressions - regex
+4. https://stackoverflow.com/questions/11936339/replace-specific-characters-within-strings - gsub()
+5. https://www.r-bloggers.com/2020/08/benfords-law-applying-to-existing-data/ - Benford's Law
+
+
+# Github Repository
+https://github.com/prathii7/Computational-Methods-and-Tools-in-Statistics
