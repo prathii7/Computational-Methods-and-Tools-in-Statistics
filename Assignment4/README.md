@@ -7,10 +7,10 @@ This assignment involved three problems: New Zealand election results analysis u
 
 **Problem 1 — New Zealand Election Data**
 
-* Loaded NZ election dataset and summarized vote counts by **election year and voting type (Candidate vs Party)**.
+* Loaded NZ election dataset and summarized vote counts by election year and voting type (Candidate vs Party).
 * For the 2014 election, calculated each party’s share of the total Candidate votes and ranked parties by vote percentage.
-* Identified, for every election year, the **winning party under both ballot types** by grouping, aggregating vote totals, and selecting the maximum.
-* Reformatted results into a comparison table showing **which party won Candidate votes vs Party votes each year.**
+* Identified, for every election year, the winning party under both ballot types by grouping, aggregating vote totals, and selecting the maximum.
+* Reformatted results into a comparison table showing which party won Candidate votes vs Party votes each year.
 
 ---
 
@@ -20,12 +20,12 @@ This assignment involved three problems: New Zealand election results analysis u
 
 * Isolated tournament finals to determine how many tournaments each player won.
 
-* Used a permutation hypothesis test with the *infer* package (no base R functions) to assess whether **winners hit more aces than losers**:
+* Used a permutation hypothesis test with the *infer* package (no base R functions) to assess whether winners hit more aces than losers:
 
   * Generated null distribution via label permutation
   * Computed p-value from simulated null distribution
 
-* Constructed win/loss table for every player, filtered to players with ≥5 matches, and identified the **highest win rate**
+* Constructed win/loss table for every player, filtered to players with ≥5 matches, and identified the highest win rate.
 
 
 ---
@@ -34,9 +34,9 @@ This assignment involved three problems: New Zealand election results analysis u
 
 Used U.S. state-level rolling-average datasets to create publication-quality visualizations addressing three questions:
 
-1. **How many major/minor spikes occurred nationally?**
+1. How many major/minor spikes occurred nationally?
 
-2. **How do trends differ between the highest-rate and lowest-rate states?**
+2. How do trends differ between the highest-rate and lowest-rate states?
 
-3. **Which states experienced substantial outbreaks first?**
+3. Which states experienced substantial outbreaks first?
    
