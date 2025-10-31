@@ -1,0 +1,38 @@
+
+# **Assignment 4**
+
+This assignment involved three problems: New Zealand election results analysis using the tidyverse, ATP tennis match outcomes using tidyverse and infer, and COVID-19 case visualization using New York Times data.
+
+---
+
+## **Problem 1 — New Zealand Election Data**
+
+* Loaded NZ election dataset and summarized vote counts by **election year and voting type (Candidate vs Party)**.
+* For the 2014 election, calculated each party’s share of the total Candidate votes and ranked parties by vote percentage.
+* Identified, for every election year, the **winning party under both ballot types** by grouping, aggregating vote totals, and selecting the maximum.
+* Reformatted results into a comparison table showing **which party won Candidate votes vs Party votes each year.**
+
+---
+
+## **Problem 2 — ATP Tennis (2019 Season Data)**
+
+* Filtered ATP match dataset to 2019 and counted total tournaments held.
+
+* Isolated tournament finals to determine how many tournaments each player won.
+
+* Used a permutation hypothesis test with the *infer* package (no base R functions) to assess whether **winners hit more aces than losers**:
+
+  * Generated null distribution via label permutation
+  * Computed p-value from simulated null distribution
+
+---
+
+## **Problem 3 — COVID-19 Case Visualization (NYTimes Rolling Averages)**
+
+Used U.S. state-level rolling-average datasets to create publication-quality visualizations addressing three questions:
+
+1. **How many major/minor spikes occurred nationally?**
+
+2. **How do trends differ between the highest-rate and lowest-rate states?**
+
+3. **Which states experienced substantial outbreaks first?**
