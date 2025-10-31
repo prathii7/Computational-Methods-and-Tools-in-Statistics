@@ -5,7 +5,7 @@ This assignment involved three problems: New Zealand election results analysis u
 
 ---
 
-## **Problem 1 — New Zealand Election Data**
+**Problem 1 — New Zealand Election Data**
 
 * Loaded NZ election dataset and summarized vote counts by **election year and voting type (Candidate vs Party)**.
 * For the 2014 election, calculated each party’s share of the total Candidate votes and ranked parties by vote percentage.
@@ -14,7 +14,7 @@ This assignment involved three problems: New Zealand election results analysis u
 
 ---
 
-## **Problem 2 — ATP Tennis (2019 Season Data)**
+**Problem 2 — ATP Tennis (2019 Season Data)**
 
 * Filtered ATP match dataset to 2019 and counted total tournaments held.
 
@@ -30,7 +30,7 @@ This assignment involved three problems: New Zealand election results analysis u
 
 ---
 
-## **Problem 3 — COVID-19 Case Visualization (NYTimes Rolling Averages)**
+**Problem 3 — COVID-19 Case Visualization (NYTimes Rolling Averages)**
 
 Used U.S. state-level rolling-average datasets to create publication-quality visualizations addressing three questions:
 
