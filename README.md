@@ -9,3 +9,4 @@ All assignments and reports are implemented in **R**.
 - [Assignment2](./Assignment2) — Random walk simulation, Monte Carlo, Regression on YouTube ads
 - [Assignment3](./Assignment3) — NHANES data analysis, SQL database queries, Australian dataset manipulation
 - [Assignment4](./Assignment4) - NZ Elections, ATP tennis performance, U.S. COVID-19 visualization
+- [Assignment5](./Assignment5) - Wald Confidence Intervals (S4), COVID-19 Visualization (plotly)
