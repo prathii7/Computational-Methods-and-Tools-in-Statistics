@@ -1,5 +1,5 @@
 # Computational-Methods-and-Tools-in-Statistics
-This repository contains my coursework (ssignments &amp; code) for STATS 506 (Fall 2025) at the University of Michigan.  
+This repository contains my coursework (assignments &amp; code) for STATS 506 (Fall 2025) at the University of Michigan.  
 All assignments and reports are implemented in **R**.
 
 ## Assignments
