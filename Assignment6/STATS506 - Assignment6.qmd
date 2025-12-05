@@ -1,0 +1,409 @@
+---
+title: "STATS506 - Assignment 6"
+author: "Prathibha Muthukumara Prasanna"
+format:
+  html:
+    self-contained: true
+    embed-resources: true
+    code-fold: true        
+---
+
+# Problem 1
+
+```{r}
+
+library(Rcpp)
+
+cppFunction('
+#include <Rcpp.h>
+using namespace Rcpp;
+
+// [[Rcpp::export]]
+double C_moment(NumericVector v, int k) {
+
+  int n = v.size();
+  if (n == 0) return NA_REAL;
+
+  // compute mean
+  double mean = 0.0;
+  for (int i = 0; i < n; ++i) {
+    mean += v[i];
+  }
+  mean /= n;
+
+  // compute kth central moment
+  double sum_term = 0.0;
+  for (int i = 0; i < n; ++i) {
+    sum_term += pow(v[i] - mean, k);
+  }
+
+  return sum_term / n;
+}
+')
+
+
+```
+
+```{r}
+
+set.seed(123)
+x <- rnorm(5000)
+
+```
+
+```{r}
+
+C_moment(x, 2)
+e1071::moment(x, order = 2, center = TRUE)
+
+
+```
+
+```{r}
+
+C_moment(x, 3)
+e1071::moment(x, order = 3, center = TRUE)
+
+
+```
+
+```{r}
+
+C_moment(x, 4)
+e1071::moment(x, order = 4, center = TRUE)
+
+```
+To validate correctness, I computed the 2nd, 3rd, and 4th central moments for a vector of size 5000 drawn from a standard normal distribution.
+In every case, the results matched those from the function e1071::moment with center = TRUE, confirming that the C++ implementation is accurate and consistent with established statistical definitions.
+
+
+# Problem 2 
+
+```{r}
+
+source("waldCI.R")
+
+setClass(
+  "bootstrapWaldCI",
+  contains = "waldCI",
+  slots = c(
+    data = "ANY",
+    FUN = "function",
+    reps = "numeric",
+    compute = "character",
+    boot_vals = "numeric"
+  )
+)
+
+.bootstrap_compute <- function(FUN, data, reps, compute) {
+
+  if (compute == "serial") {
+
+    return(
+      replicate(reps, {
+        idx <- sample(seq_len(nrow(data)), replace = TRUE)
+        FUN(data[idx, , drop = FALSE])
+      })
+    )
+
+  } else if (compute == "parallel") {
+
+    library(parallel)
+    cores <- max(1, detectCores() - 1)
+
+    return(
+      unlist(
+        mclapply(1:reps, function(i) {
+          idx <- sample(seq_len(nrow(data)), replace = TRUE)
+          FUN(data[idx, , drop = FALSE])
+        }, mc.cores = cores)
+      )
+    )
+
+  } else {
+    stop("compute must be 'serial' or 'parallel'")
+  }
+}
+
+makeBootstrapCI <- function(FUN, data, reps = 1000,
+                            level = 0.95,
+                            compute = c("serial", "parallel")) {
+
+  compute <- match.arg(compute)
+
+  boot_vals <- .bootstrap_compute(FUN, data, reps, compute)
+
+  est <- mean(boot_vals)
+  se  <- sd(boot_vals)
+
+  # Build a waldCI object using your constructor
+  ci_wald <- waldCI(mean = est, sterr = se, level = level)
+
+  new("bootstrapWaldCI",
+      level = ci_wald@level,
+      mean = ci_wald@mean,
+      se = ci_wald@se,
+      lower = ci_wald@lower,
+      upper = ci_wald@upper,
+      data = data,
+      FUN = FUN,
+      reps = reps,
+      compute = compute,
+      boot_vals = boot_vals)
+}
+
+setMethod("show", "bootstrapWaldCI", function(object) {
+  cat("bootstrapWaldCI object\n")
+  cat("Estimate:", object@mean, "\n")
+  cat("SE:", object@se, "\n")
+  cat("Level:", object@level, "\n")
+  cat("CI: [", object@lower, ", ", object@upper, "]\n", sep = "")
+  cat("Reps:", object@reps, "\n")
+  cat("Compute:", object@compute, "\n")
+})
+
+setGeneric("rebootstrap", function(object) standardGeneric("rebootstrap"))
+
+setMethod("rebootstrap", "bootstrapWaldCI", function(object) {
+
+  boot_vals <- .bootstrap_compute(
+    FUN = object@FUN,
+    data = object@data,
+    reps = object@reps,
+    compute = object@compute
+  )
+
+  est <- mean(boot_vals)
+  se  <- sd(boot_vals)
+
+  new_ci <- waldCI(mean = est, sterr = se, level = object@level)
+
+  object@mean  <- new_ci@mean
+  object@se    <- new_ci@se
+  object@lower <- new_ci@lower
+  object@upper <- new_ci@upper
+  object@boot_vals <- boot_vals
+
+  return(object)
+})
+
+dispCoef <- function(df) {
+  fit <- lm(mpg ~ cyl + disp + wt, data = df)
+  coef(fit)["disp"]
+}
+
+ci1 <- makeBootstrapCI(function(x) mean(x$y),
+                       ggplot2::diamonds,
+                       reps = 1000)
+
+ci1
+rebootstrap(ci1)
+
+ci2 <- makeBootstrapCI(dispCoef,
+                       mtcars,
+                       reps = 1000)
+
+ci2
+rebootstrap(ci2)
+
+
+```
+Both the serial and parallel versions of the bootstrap produced consistent confidence intervals, as expected. The difference lies only in computational efficiency. Serial computation runs all bootstrap replications one after another on a single CPU core. It is reliable but slower when the number of replications is large. Parallel computation distributes the bootstrap replications across multiple cores, which reduces runtime when each bootstrap iteration is moderately expensive. 
+In summary, parallel computation improves performance for heavier bootstrap workloads, while both methods yield the same statistical results.
+
+# Problem 3 
+
+```{r}
+
+library(lme4)
+library(dplyr)
+library(ggplot2)
+
+source("generated_data.R")   
+df <- df                    
+
+countries <- c("US","India","Lithuania","Germany","Nigeria","Other")
+
+coef_list <- list()
+time_list <- numeric(length(countries))
+
+for (i in seq_along(countries)) {
+
+  ct <- countries[i]
+  message("Running model for: ", ct)
+
+  dct <- df %>% filter(country == ct)
+
+  dct <- dct %>%
+    mutate(
+      gpa_z   = scale(prior_gpa)[,1],
+      forum_z = scale(forum_posts)[,1],
+      quiz_z  = scale(quiz_attempts)[,1]
+    )
+
+  t <- system.time({
+    fit <- glmer(
+      completed_course ~ gpa_z + forum_z + quiz_z + (1 | device_type),
+      data = dct,
+      family = binomial(),
+      nAGQ = 0              
+    )
+  })
+
+  time_list[i] <- t[3]      
+  coef_list[[ct]] <- fixef(fit)["forum_z"]
+}
+
+coef_df <- data.frame(
+  country = countries,
+  forum_coef = unlist(coef_list)
+)
+
+ggplot(coef_df, aes(x = country, y = forum_coef)) +
+  geom_col(fill = "#4472C4") +
+  theme_minimal() +
+  labs(title = "Forum Posts Effect on Completion (Log-Odds)",
+       y = "Coefficient for forum_posts (standardized)")
+
+print(time_list)
+
+print(coef_df)
+
+```
+All six countries showed positive and highly similar coefficients (approximately 0.17–0.19), indicating that increased forum activity reliably predicts higher completion rates. Nigeria showed the strongest effect (0.192), while Lithuania showed the smallest (0.175). Overall, the results suggest a consistent, cross-country association between forum engagement and completion.
+
+```{r}
+
+system.time({
+
+  df2 <- df %>%
+    group_by(country) %>%
+    mutate(
+      gpa_z   = as.numeric(scale(prior_gpa)),
+      forum_z = as.numeric(scale(forum_posts)),
+      quiz_z  = as.numeric(scale(quiz_attempts))
+    ) %>%
+    ungroup()
+
+  model_results <- lapply(countries, function(ct) {
+
+    dct <- df2[df2$country == ct, ]
+
+    fit <- glmer(
+      completed_course ~ gpa_z + forum_z + quiz_z + (1 | device_type),
+      data = dct,
+      family = binomial(),
+      nAGQ = 0
+    )
+
+    fixef(fit)["forum_z"]
+  })
+
+})
+
+
+```
+The full set of models ran in about 25 seconds on the dataset.
+
+
+# Problem 4 
+
+```{r}
+
+library(data.table)
+
+url <- "https://raw.githubusercontent.com/JeffSackmann/tennis_atp/refs/heads/master/atp_matches_2019.csv"
+dt <- fread(url)
+num_tournaments <- uniqueN(dt$tourney_id)
+num_tournaments
+
+```
+The ATP 2019 dataset contains 128 tournaments.
+
+```{r}
+
+winners <- dt[, .(winner_name = winner_name[.N]), by = tourney_id]
+winner_counts <- winners[, .N, by = winner_name][order(-N)]
+winner_counts
+num_multi_winners <- winner_counts[N > 1, .N]
+max_wins <- max(winner_counts$N)
+winner_counts[N == max_wins]
+
+```
+84 players won more than one tournament.
+The highest number of tournaments won by a single player (Rafael Nadal) was 7.
+
+```{r}
+ace_dt <- dt[, .(
+  winner_aces = w_ace,
+  loser_aces  = l_ace
+)]
+ace_summary <- ace_dt[, .(
+  mean_winner_aces = mean(winner_aces, na.rm=TRUE),
+  mean_loser_aces = mean(loser_aces, na.rm=TRUE),
+  diff = mean(winner_aces - loser_aces, na.rm=TRUE)
+)]
+ace_summary
+library(broom)
+
+t_test <- t.test(ace_dt$winner_aces, ace_dt$loser_aces, paired = TRUE)
+tidy(t_test)
+
+```
+Winners have on average more aces than losers, and the paired t-test indicates whether this difference is statistically significant.
+
+```{r}
+win_counts <- dt[, .N, by = winner_name]
+setnames(win_counts, "N", "wins")
+loss_counts <- dt[, .N, by = loser_name]
+setnames(loss_counts, "N", "losses")
+player_stats <- merge(
+  win_counts, loss_counts,
+  by.x = "winner_name", by.y = "loser_name",
+  all = TRUE
+)
+
+player_stats[is.na(player_stats)] <- 0  # replace NAs with zero
+
+player_stats[, matches := wins + losses]
+player_stats[, win_rate := wins / matches]
+top_players <- player_stats[matches >= 5][order(-win_rate)]
+top_players
+best_rate <- max(top_players$win_rate)
+top_players[win_rate == best_rate]
+
+```
+Among players with at least 5 matches, the highest win-rate observed is 0.8696. The player achieving this win-rate is Rafael Nadal.
+
+
+# Attribution of Sources 
+
+http://adv-r.had.co.nz/Rcpp.html
+https://adv-r.hadley.nz/s4.html
+https://stat.ethz.ch/R-manual/R-devel/library/base/html/scale.html
+https://stat.ethz.ch/R-manual/R-devel/library/parallel/doc/parallel.pdf
+
+
+
+# Github Repository 
+
+https://github.com/prathii7/Computational-Methods-and-Tools-in-Statistics
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
