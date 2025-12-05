@@ -1,0 +1,1 @@
+Assignment 6 involved implementing Rcpp-based central moments, extending the waldCI S4 class to a bootstrapWaldCI framework with serial and parallel computation, fitting optimized mixed-effects logistic models across six countries, and re-creating prior analyses using efficient data.table workflows.
