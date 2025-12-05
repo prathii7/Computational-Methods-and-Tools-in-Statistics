@@ -8,3 +8,4 @@ All assignments and reports are implemented in **R**.
 - [Assignment3](./Assignment3) — NHANES data analysis, SQL database queries, Australian dataset manipulation
 - [Assignment4](./Assignment4) — NZ Elections, ATP tennis performance, U.S. COVID-19 visualization
 - [Assignment5](./Assignment5) — Wald Confidence Intervals (S4), COVID-19 Visualization (plotly)
+- [Assignment6](./Assignment6) — Rcpp central moments, bootstrap S4 confidence intervals, mixed-effects modeling, data.table optimization
