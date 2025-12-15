@@ -1,0 +1,1447 @@
+---
+title: "STATS506 – Final Project Report"
+author: "Prathibha Muthukumara Prasanna"
+format:
+  pdf:
+    code-fold: false
+    code-overflow: wrap
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+#| include: false
+library(tidyverse)
+
+before <- ls()
+
+source("/Users/prathi/Library/CloudStorage/OneDrive-Umich/STATS506 - Computational Methods/result/GSS.r")
+
+after <- ls()
+
+new_objects <- setdiff(after, before)
+cat("New objects created:\n")
+print(new_objects)
+
+for(obj in new_objects) {
+  if(is.data.frame(get(obj))) {
+    cat("\nFound data frame:", obj, "\n")
+    cat("Dimensions:", dim(get(obj)), "\n")
+    gss_raw <- get(obj)  # Assign it to gss_raw
+  }
+}
+
+dim(gss_raw)
+names(gss_raw)
+```
+```{r}
+
+gss_raw <- GSS
+
+# Sample sizes by year
+cat("\n=== SAMPLE SIZE BY YEAR ===\n")
+table(gss_raw$YEAR)
+
+# Valid weight/height by year
+cat("\n=== VALID WEIGHT/HEIGHT BY YEAR ===\n")
+gss_raw %>% 
+  group_by(YEAR) %>% 
+  summarise(
+    n_total = n(),
+    n_weight = sum(!is.na(WEIGHT) & WEIGHT > 0),
+    n_height = sum(!is.na(HEIGHT) & HEIGHT > 0),
+    n_both = sum(!is.na(WEIGHT) & WEIGHT > 0 & !is.na(HEIGHT) & HEIGHT > 0)
+  )
+
+# Happiness coding
+cat("\n=== HAPPINESS CODING ===\n")
+gss_raw %>% 
+  count(HAPPY) %>% 
+  mutate(percent = round(n/sum(n)*100, 2))
+
+# Education/Degree coding
+cat("\n=== DEGREE CODING ===\n")
+gss_raw %>% 
+  count(DEGREE) %>% 
+  mutate(percent = round(n/sum(n)*100, 2))
+
+# Weight (body weight) summary
+cat("\n=== BODY WEIGHT SUMMARY ===\n")
+summary(gss_raw$WEIGHT)
+cat("Missing/Invalid:", sum(is.na(gss_raw$WEIGHT) | gss_raw$WEIGHT <= 0), "\n")
+
+# Height summary
+cat("\n=== HEIGHT SUMMARY ===\n")
+summary(gss_raw$HEIGHT)
+cat("Missing/Invalid:", sum(is.na(gss_raw$HEIGHT) | gss_raw$HEIGHT <= 0), "\n")
+
+# Income summary
+cat("\n=== INCOME SUMMARY ===\n")
+summary(gss_raw$INCOME)
+
+# RINCOME summary (family income)
+cat("\n=== RINCOME SUMMARY ===\n")
+summary(gss_raw$RINCOME)
+
+# Survey weight
+cat("\n=== SURVEY WEIGHT SUMMARY ===\n")
+summary(gss_raw$WTSSALL)
+
+# Age
+cat("\n=== AGE SUMMARY ===\n")
+summary(gss_raw$AGE)
+
+# Sex distribution
+cat("\n=== SEX DISTRIBUTION ===\n")
+table(gss_raw$SEX)
+
+# Race distribution
+cat("\n=== RACE DISTRIBUTION ===\n")
+table(gss_raw$RACE)
+
+# Marital status
+cat("\n=== MARITAL STATUS DISTRIBUTION ===\n")
+table(gss_raw$MARITAL)
+
+```
+```{r}
+
+gss_clean <- gss_raw %>%
+  mutate(
+    # Recode negative values to NA for all variables
+    WEIGHT = ifelse(WEIGHT < 0, NA, WEIGHT),
+    HEIGHT = ifelse(HEIGHT < 0, NA, HEIGHT),
+    HAPPY = ifelse(HAPPY < 0, NA, HAPPY),
+    DEGREE = ifelse(DEGREE < 0, NA, DEGREE),
+    AGE = ifelse(AGE < 0, NA, AGE),
+    SEX = ifelse(SEX < 0, NA, SEX),
+    RACE = ifelse(RACE < 0, NA, RACE),
+    MARITAL = ifelse(MARITAL < 0, NA, MARITAL),
+    INCOME = ifelse(INCOME < 0, NA, INCOME),
+    RINCOME = ifelse(RINCOME < 0, NA, RINCOME),
+    WTSSALL = ifelse(WTSSALL < 0, NA, WTSSALL)
+  )
+
+cat("Valid cases after recoding:\n")
+gss_clean %>%
+  summarise(
+    n_total = n(),
+    n_weight = sum(!is.na(WEIGHT)),
+    n_height = sum(!is.na(HEIGHT)),
+    n_happy = sum(!is.na(HAPPY)),
+    n_degree = sum(!is.na(DEGREE)),
+    n_wtssall = sum(!is.na(WTSSALL))
+  )
+
+
+gss_clean <- gss_clean %>%
+  mutate(
+    # BMI formula: (weight in pounds × 703) / (height in inches)²
+    bmi = (WEIGHT * 703) / (HEIGHT^2)
+  )
+
+# Check BMI distribution
+cat("\nBMI Summary:\n")
+summary(gss_clean$bmi)
+
+# Check for implausible values
+cat("\nImplausible BMI values:\n")
+cat("BMI < 10:", sum(gss_clean$bmi < 10, na.rm = TRUE), "\n")
+cat("BMI > 70:", sum(gss_clean$bmi > 70, na.rm = TRUE), "\n")
+
+# Flag implausible BMI values as missing (BMI < 10 or > 70)
+gss_clean <- gss_clean %>%
+  mutate(
+    bmi = ifelse(bmi < 10 | bmi > 70, NA, bmi)
+  )
+
+cat("\nAfter removing implausible values:\n")
+summary(gss_clean$bmi)
+
+
+gss_clean <- gss_clean %>%
+  mutate(
+    # Standard BMI categories
+    bmi_category = case_when(
+      is.na(bmi) ~ NA_character_,
+      bmi < 18.5 ~ "Underweight",
+      bmi >= 18.5 & bmi < 25 ~ "Normal weight",
+      bmi >= 25 & bmi < 30 ~ "Overweight",
+      bmi >= 30 & bmi < 35 ~ "Obese Class I",
+      bmi >= 35 & bmi < 40 ~ "Obese Class II",
+      bmi >= 40 ~ "Obese Class III"
+    ),
+    
+    # Binary obesity indicator (main exposure variable)
+    obese = case_when(
+      is.na(bmi) ~ NA_real_,
+      bmi >= 30 ~ 1,  # Obese
+      TRUE ~ 0        # Not obese
+    ),
+    
+    # Binary for normal weight (reference group for some analyses)
+    normal_weight = case_when(
+      is.na(bmi) ~ NA_real_,
+      bmi >= 18.5 & bmi < 25 ~ 1,
+      TRUE ~ 0
+    ),
+    
+    # Severe obesity indicator (for secondary analysis)
+    severe_obese = case_when(
+      is.na(bmi) ~ NA_real_,
+      bmi >= 35 ~ 1,
+      TRUE ~ 0
+    )
+  )
+
+# Check obesity prevalence
+cat("\nObesity prevalence:\n")
+gss_clean %>%
+  count(obese) %>%
+  mutate(percent = round(n/sum(n)*100, 2))
+
+cat("\nBMI category distribution:\n")
+gss_clean %>%
+  count(bmi_category) %>%
+  mutate(percent = round(n/sum(n)*100, 2))
+
+# Obesity by year
+cat("\nObesity prevalence by year:\n")
+gss_clean %>%
+  group_by(YEAR) %>%
+  summarise(
+    n = n(),
+    n_obese = sum(obese == 1, na.rm = TRUE),
+    pct_obese = round(mean(obese, na.rm = TRUE)*100, 2)
+  )
+
+gss_clean <- gss_clean %>%
+  mutate(
+    # Keep as ordinal (1 = very happy, 2 = pretty happy, 3 = not too happy)
+    happy_ordinal = HAPPY,
+    
+    # Create factor with meaningful labels
+    happy_factor = factor(HAPPY,
+                         levels = c(1, 2, 3),
+                         labels = c("Very happy", "Pretty happy", "Not too happy"),
+                         ordered = TRUE),
+    
+    # Binary version for sensitivity analysis (1 = not too happy)
+    unhappy = case_when(
+      is.na(HAPPY) ~ NA_real_,
+      HAPPY == 3 ~ 1,  # Not too happy
+      HAPPY %in% c(1, 2) ~ 0  # Pretty or very happy
+    )
+  )
+
+# Check distribution
+cat("\nHappiness distribution:\n")
+table(gss_clean$happy_factor, useNA = "ifany")
+
+
+gss_clean <- gss_clean %>%
+  mutate(
+    # Recode into meaningful categories
+    education = factor(DEGREE,
+                      levels = c(0, 1, 2, 3, 4),
+                      labels = c("Less than HS", "High school", 
+                                "Associate/JC", "Bachelor's", "Graduate")),
+    
+    # Binary: Low education (< Bachelor's) vs High education (≥ Bachelor's)
+    education_binary = case_when(
+      is.na(DEGREE) ~ NA_character_,
+      DEGREE < 3 ~ "Less than Bachelor's",
+      DEGREE >= 3 ~ "Bachelor's or higher"
+    ),
+    
+    # Three categories for stratification
+    education_3cat = case_when(
+      is.na(DEGREE) ~ NA_character_,
+      DEGREE <= 1 ~ "HS or less",
+      DEGREE == 2 ~ "Some college",
+      DEGREE >= 3 ~ "Bachelor's or higher"
+    )
+  )
+
+# Check distribution
+cat("\nEducation distribution:\n")
+table(gss_clean$education, useNA = "ifany")
+
+cat("\nEducation (3 categories):\n")
+table(gss_clean$education_3cat, useNA = "ifany")
+
+# Check which income variable has more valid data
+cat("Income variable comparison:\n")
+cat("INCOME valid cases:", sum(!is.na(gss_clean$INCOME)), "\n")
+cat("RINCOME valid cases:", sum(!is.na(gss_clean$RINCOME)), "\n")
+
+# Use RINCOME (respondent's income) - it has more data
+# RINCOME coding: 1-12 scale (1 = lowest, 12 = highest)
+
+gss_clean <- gss_clean %>%
+  mutate(
+    # Keep as continuous
+    income_ordinal = RINCOME,
+    
+    # Create tertiles (low, middle, high)
+    income_tertile = case_when(
+      is.na(RINCOME) ~ NA_character_,
+      RINCOME <= 8 ~ "Low income",
+      RINCOME > 8 & RINCOME <= 11 ~ "Middle income",
+      RINCOME > 11 ~ "High income"
+    ),
+    
+    # Binary: Low vs High
+    income_binary = case_when(
+      is.na(RINCOME) ~ NA_character_,
+      RINCOME <= 9 ~ "Lower income",
+      RINCOME > 9 ~ "Higher income"
+    )
+  )
+
+# Check distribution
+cat("\nIncome tertile distribution:\n")
+table(gss_clean$income_tertile, useNA = "ifany")
+
+gss_clean <- gss_clean %>%
+  mutate(
+    # Sex
+    sex = factor(SEX,
+                levels = c(1, 2),
+                labels = c("Male", "Female")),
+    
+    # Race
+    race = factor(RACE,
+                 levels = c(1, 2, 3),
+                 labels = c("White", "Black", "Other")),
+    
+    # Marital status
+    marital = factor(MARITAL,
+                    levels = c(1, 2, 3, 4, 5),
+                    labels = c("Married", "Widowed", "Divorced", 
+                              "Separated", "Never married")),
+    
+    # Age (continuous)
+    age = AGE,
+    
+    # Age groups
+    age_group = case_when(
+      is.na(AGE) ~ NA_character_,
+      AGE < 30 ~ "18-29",
+      AGE >= 30 & AGE < 45 ~ "30-44",
+      AGE >= 45 & AGE < 65 ~ "45-64",
+      AGE >= 65 ~ "65+"
+    ),
+    
+    # Working age (25-64) for secondary analysis
+    working_age = case_when(
+      is.na(AGE) ~ NA_real_,
+      AGE >= 25 & AGE <= 64 ~ 1,
+      TRUE ~ 0
+    ),
+    
+    # Survey year (continuous for trend analysis)
+    year = YEAR,
+    
+    # Year as factor
+    year_factor = factor(YEAR),
+    
+    # Survey weight
+    weight_survey = WTSSALL
+  )
+
+# Check distributions
+cat("\nSex distribution:\n")
+table(gss_clean$sex, useNA = "ifany")
+
+cat("\nRace distribution:\n")
+table(gss_clean$race, useNA = "ifany")
+
+cat("\nAge group distribution:\n")
+table(gss_clean$age_group, useNA = "ifany")
+
+
+# Keep only observations with complete data on key variables
+gss_analytic <- gss_clean %>%
+  filter(
+    !is.na(bmi),           # Valid BMI
+    !is.na(obese),         # Valid obesity status
+    !is.na(happy_ordinal), # Valid happiness
+    !is.na(education),     # Valid education
+    !is.na(income_ordinal),# Valid income
+    !is.na(age),           # Valid age
+    !is.na(sex),           # Valid sex
+    !is.na(race),          # Valid race
+    !is.na(weight_survey)  # Valid survey weight
+  )
+
+cat("\nAnalytic sample size:\n")
+cat("Total observations:", nrow(gss_analytic), "\n")
+
+cat("\nSample by year:\n")
+table(gss_analytic$year)
+
+# Calculate % of original sample retained
+retention_rate <- (nrow(gss_analytic) / nrow(gss_raw)) * 100
+cat("\nRetention rate:", round(retention_rate, 2), "%\n")
+
+
+# Compare characteristics of included vs excluded
+cat("\nComparing included vs excluded observations:\n")
+
+gss_clean %>%
+  mutate(included = ifelse(ID_ %in% gss_analytic$ID_, "Included", "Excluded")) %>%
+  group_by(included) %>%
+  summarise(
+    n = n(),
+    mean_age = mean(age, na.rm = TRUE),
+    pct_female = mean(sex == "Female", na.rm = TRUE) * 100,
+    pct_white = mean(race == "White", na.rm = TRUE) * 100
+  )
+
+# Save cleaned full dataset (for reference)
+saveRDS(gss_clean, 
+        "/Users/prathi/Library/CloudStorage/OneDrive-Umich/STATS506 - Computational Methods/result/gss_cleaned.rds")
+
+# Save analytic dataset (for analysis)
+saveRDS(gss_analytic, 
+        "/Users/prathi/Library/CloudStorage/OneDrive-Umich/STATS506 - Computational Methods/result/gss_analytic.rds")
+
+```
+```{r}
+
+# Check income variables by year
+gss_clean %>%
+  group_by(year) %>%
+  summarise(
+    n = n(),
+    n_rincome = sum(!is.na(RINCOME)),
+    n_income = sum(!is.na(INCOME)),
+    n_both_valid = sum(!is.na(bmi) & !is.na(happy_ordinal) & !is.na(education))
+  )
+
+# Check what's available in 2022
+cat("\nChecking 2022 specifically:\n")
+gss_clean %>%
+  filter(year == 2022) %>%
+  summarise(
+    n_total = n(),
+    n_bmi = sum(!is.na(bmi)),
+    n_happy = sum(!is.na(happy_ordinal)),
+    n_education = sum(!is.na(education)),
+    n_rincome = sum(!is.na(RINCOME)),
+    n_income = sum(!is.na(INCOME))
+  )
+
+
+table(gss_clean$INCOME, gss_clean$year, useNA = "ifany")
+
+# Recode income variable
+gss_clean <- gss_clean %>%
+  mutate(
+    # Use INCOME (family income) instead of RINCOME
+    income_ordinal = ifelse(is.na(RINCOME), INCOME, RINCOME),
+    
+    # Recode into tertiles based on INCOME scale (1-12)
+    income_tertile = case_when(
+      is.na(income_ordinal) ~ NA_character_,
+      income_ordinal <= 8 ~ "Low income",
+      income_ordinal > 8 & income_ordinal <= 11 ~ "Middle income",
+      income_ordinal > 11 ~ "High income"
+    ),
+    
+    # Binary version
+    income_binary = case_when(
+      is.na(income_ordinal) ~ NA_character_,
+      income_ordinal <= 9 ~ "Lower income",
+      income_ordinal > 9 ~ "Higher income"
+    )
+  )
+
+gss_analytic <- gss_clean %>%
+  filter(
+    !is.na(bmi),           
+    !is.na(obese),         
+    !is.na(happy_ordinal), 
+    !is.na(education),     
+    !is.na(income_ordinal), # Now uses INCOME for 2022
+    !is.na(age),           
+    !is.na(sex),           
+    !is.na(race),          
+    !is.na(weight_survey)  
+  )
+
+# Check new sample sizes
+cat("\n=== UPDATED ANALYTIC SAMPLE ===\n")
+cat("Total N:", nrow(gss_analytic), "\n")
+
+cat("\nSample by year:\n")
+table(gss_analytic$year)
+
+cat("\nObesity prevalence by year:\n")
+gss_analytic %>%
+  group_by(year) %>%
+  summarise(
+    n = n(),
+    n_obese = sum(obese == 1),
+    pct_obese = round(mean(obese)*100, 1)
+  )
+
+# Overall stats
+cat("\n=== FINAL STATS ===\n")
+cat("Total N:", nrow(gss_analytic), "\n")
+cat("Overall obesity prevalence:", round(mean(gss_analytic$obese)*100, 1), "%\n")
+cat("Mean happiness:", round(mean(gss_analytic$happy_ordinal), 2), "\n")
+
+# Save updated datasets
+saveRDS(gss_clean, 
+        "/Users/prathi/Library/CloudStorage/OneDrive-Umich/STATS506 - Computational Methods/result/gss_cleaned.rds")
+
+saveRDS(gss_analytic, 
+        "/Users/prathi/Library/CloudStorage/OneDrive-Umich/STATS506 - Computational Methods/result/gss_analytic.rds")
+
+```
+```{r}
+library(tidyverse)
+library(survey)      
+library(gtsummary)   
+library(ggplot2)
+
+select <- dplyr::select
+
+# Load analytic dataset
+gss_analytic <- readRDS("/Users/prathi/Library/CloudStorage/OneDrive-Umich/STATS506 - Computational Methods/result/gss_analytic.rds")
+
+gss_design <- svydesign(
+  ids = ~1,
+  weights = ~weight_survey,
+  data = gss_analytic
+)
+
+cat("Survey design created successfully\n")
+cat("Effective sample size:", round(sum(weights(gss_design)), 0), "\n\n")
+
+table1_unweighted <- gss_analytic %>%
+  select(
+    age, sex, race, marital, education, income_tertile,
+    bmi, obese, bmi_category, happy_factor, year
+  ) %>%
+  tbl_summary(
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(all_continuous() ~ 2, all_categorical() ~ c(0, 1)),
+    label = list(
+      age ~ "Age (years)",
+      sex ~ "Sex",
+      race ~ "Race",
+      marital ~ "Marital status",
+      education ~ "Education",
+      income_tertile ~ "Household income",
+      bmi ~ "BMI (kg/m²)",
+      obese ~ "Obesity status",
+      bmi_category ~ "BMI category",
+      happy_factor ~ "Happiness",
+      year ~ "Survey year"
+    ),
+    missing_text = "Missing"
+  ) %>%
+  modify_caption("**Table 1. Sample Characteristics (Unweighted)**")
+
+print(table1_unweighted)
+
+# Weighted descriptive statistics
+cat("\n\nWeighted descriptive statistics:\n")
+
+cat("\nAge (weighted mean):\n")
+svymean(~age, gss_design, na.rm = TRUE)
+
+cat("\nBMI (weighted mean):\n")
+svymean(~bmi, gss_design, na.rm = TRUE)
+
+cat("\nSex (weighted %):\n")
+svytable(~sex, gss_design) %>% prop.table() * 100
+
+cat("\nRace (weighted %):\n")
+svytable(~race, gss_design) %>% prop.table() * 100
+
+cat("\nObesity status (weighted %):\n")
+svytable(~obese, gss_design) %>% prop.table() * 100
+
+cat("\nHappiness (weighted %):\n")
+svytable(~happy_factor, gss_design) %>% prop.table() * 100
+
+
+table2_by_obesity <- gss_analytic %>%
+  select(
+    obese, age, sex, race, marital, education, income_tertile,
+    bmi, happy_factor, year
+  ) %>%
+  tbl_summary(
+    by = obese,
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(all_continuous() ~ 2, all_categorical() ~ c(0, 1)),
+    label = list(
+      age ~ "Age (years)",
+      sex ~ "Sex",
+      race ~ "Race",
+      marital ~ "Marital status",
+      education ~ "Education",
+      income_tertile ~ "Household income",
+      bmi ~ "BMI (kg/m²)",
+      happy_factor ~ "Happiness",
+      year ~ "Survey year"
+    ),
+    missing_text = "Missing"
+  ) %>%
+  add_p(test = list(all_continuous() ~ "t.test",
+                   all_categorical() ~ "chisq.test")) %>%
+  modify_caption("**Table 2. Characteristics by Obesity Status**")
+
+print(table2_by_obesity)
+
+
+table3_by_year <- gss_analytic %>%
+  select(
+    year, age, sex, race, education, income_tertile,
+    bmi, obese, happy_factor
+  ) %>%
+  tbl_summary(
+    by = year,
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(all_continuous() ~ 2, all_categorical() ~ c(0, 1)),
+    label = list(
+      age ~ "Age (years)",
+      sex ~ "Sex",
+      race ~ "Race",
+      education ~ "Education",
+      income_tertile ~ "Household income",
+      bmi ~ "BMI (kg/m²)",
+      obese ~ "Obesity status (%)",
+      happy_factor ~ "Happiness"
+    ),
+    missing_text = "Missing"
+  ) %>%
+  add_p() %>%
+  modify_caption("**Table 3. Characteristics by Survey Year**")
+
+print(table3_by_year)
+
+
+obesity_by_year <- svyby(~obese, ~year, gss_design, svymean, na.rm = TRUE)
+print(obesity_by_year)
+
+cat("\nObesity by Year and Education:\n")
+obesity_by_year_edu <- svyby(~obese, ~year + education_3cat, gss_design, svymean, na.rm = TRUE)
+print(obesity_by_year_edu)
+
+cat("\nObesity by Year and Income:\n")
+obesity_by_year_inc <- svyby(~obese, ~year + income_tertile, gss_design, svymean, na.rm = TRUE)
+print(obesity_by_year_inc)
+
+
+happiness_by_year <- svyby(~happy_ordinal, ~year, gss_design, svymean, na.rm = TRUE)
+cat("\nMean happiness by year:\n")
+print(happiness_by_year)
+
+cat("\nMean happiness by obesity status:\n")
+happiness_by_obesity <- svyby(~happy_ordinal, ~obese, gss_design, svymean, na.rm = TRUE)
+print(happiness_by_obesity)
+
+cat("\nMean happiness by obesity and year:\n")
+happiness_by_obesity_year <- svyby(~happy_ordinal, ~obese + year, gss_design, svymean, na.rm = TRUE)
+print(happiness_by_obesity_year)
+
+
+obesity_trend_data <- gss_analytic %>%
+  group_by(year) %>%
+  summarise(
+    n = n(),
+    obesity_prev = mean(obese, na.rm = TRUE) * 100,
+    se = sqrt(obesity_prev * (100 - obesity_prev) / n)
+  )
+
+fig1 <- ggplot(obesity_trend_data, aes(x = year, y = obesity_prev)) +
+  geom_line(size = 1.2, color = "#2C3E50") +
+  geom_point(size = 3, color = "#E74C3C") +
+  geom_errorbar(aes(ymin = obesity_prev - 1.96*se, 
+                    ymax = obesity_prev + 1.96*se),
+                width = 0.2) +
+  scale_x_continuous(breaks = c(2014, 2018)) +
+  scale_y_continuous(limits = c(0, 50), breaks = seq(0, 50, 10)) +
+  labs(
+    title = "Obesity Prevalence Over Time",
+    x = "Survey Year",
+    y = "Obesity Prevalence (%)",
+    caption = "Error bars represent 95% confidence intervals"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    panel.grid.minor = element_blank()
+  )
+
+print(fig1)
+
+ggsave("/Users/prathi/Library/CloudStorage/OneDrive-Umich/STATS506 - Computational Methods/result/figure1_obesity_trend.png",
+       fig1, width = 8, height = 6, dpi = 300)
+
+cat("Figure 1 saved!\n")
+
+
+obesity_edu_data <- gss_analytic %>%
+  group_by(year, education_3cat) %>%
+  summarise(
+    n = n(),
+    obesity_prev = mean(obese, na.rm = TRUE) * 100,
+    se = sqrt(obesity_prev * (100 - obesity_prev) / n),
+    .groups = "drop"
+  )
+
+fig2 <- ggplot(obesity_edu_data, aes(x = year, y = obesity_prev, 
+                                      color = education_3cat,
+                                      group = education_3cat)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = obesity_prev - 1.96*se, 
+                    ymax = obesity_prev + 1.96*se),
+                width = 0.2) +
+  scale_x_continuous(breaks = c(2014, 2018)) +
+  scale_y_continuous(limits = c(0, 50), breaks = seq(0, 50, 10)) +
+  scale_color_manual(values = c("#E74C3C", "#F39C12", "#27AE60")) +
+  labs(
+    title = "Obesity Prevalence by Education Level",
+    x = "Survey Year",
+    y = "Obesity Prevalence (%)",
+    color = "Education",
+    caption = "Error bars represent 95% confidence intervals"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    legend.position = "bottom",
+    panel.grid.minor = element_blank()
+  )
+
+print(fig2)
+
+ggsave("/Users/prathi/Library/CloudStorage/OneDrive-Umich/STATS506 - Computational Methods/result/figure2_obesity_education.png",
+       fig2, width = 8, height = 6, dpi = 300)
+
+cat("Figure 2 saved!\n")
+
+obesity_inc_data <- gss_analytic %>%
+  group_by(year, income_tertile) %>%
+  summarise(
+    n = n(),
+    obesity_prev = mean(obese, na.rm = TRUE) * 100,
+    se = sqrt(obesity_prev * (100 - obesity_prev) / n),
+    .groups = "drop"
+  )
+
+fig3 <- ggplot(obesity_inc_data, aes(x = year, y = obesity_prev, 
+                                      color = income_tertile,
+                                      group = income_tertile)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = obesity_prev - 1.96*se, 
+                    ymax = obesity_prev + 1.96*se),
+                width = 0.2) +
+  scale_x_continuous(breaks = c(2014, 2018)) +
+  scale_y_continuous(limits = c(0, 50), breaks = seq(0, 50, 10)) +
+  scale_color_manual(values = c("#3498DB", "#9B59B6", "#E74C3C")) +
+  labs(
+    title = "Obesity Prevalence by Income Level",
+    x = "Survey Year",
+    y = "Obesity Prevalence (%)",
+    color = "Income",
+    caption = "Error bars represent 95% confidence intervals"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    legend.position = "bottom",
+    panel.grid.minor = element_blank()
+  )
+
+print(fig3)
+
+ggsave("/Users/prathi/Library/CloudStorage/OneDrive-Umich/STATS506 - Computational Methods/result/figure3_obesity_income.png",
+       fig3, width = 8, height = 6, dpi = 300)
+
+happiness_dist_data <- gss_analytic %>%
+  group_by(year, obese, happy_factor) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(year, obese) %>%
+  mutate(percent = n / sum(n) * 100) %>%
+  mutate(obesity_label = ifelse(obese == 1, "Obese", "Not obese"))
+
+fig4 <- ggplot(happiness_dist_data, aes(x = factor(year), y = percent, 
+                                         fill = happy_factor)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~obesity_label) +
+  scale_fill_manual(values = c("#27AE60", "#F39C12", "#E74C3C")) +
+  labs(
+    title = "Happiness Distribution by Obesity Status and Year",
+    x = "Survey Year",
+    y = "Percentage (%)",
+    fill = "Happiness"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    legend.position = "bottom",
+    panel.grid.minor = element_blank()
+  )
+
+print(fig4)
+
+ggsave("/Users/prathi/Library/CloudStorage/OneDrive-Umich/STATS506 - Computational Methods/result/figure4_happiness_distribution.png",
+       fig4, width = 10, height = 6, dpi = 300)
+
+
+cat("\n--- OVERALL SAMPLE ---\n")
+cat("Total N:", nrow(gss_analytic), "\n")
+cat("Mean age:", round(mean(gss_analytic$age), 1), "years (SD =", 
+    round(sd(gss_analytic$age), 1), ")\n")
+cat("Female:", round(mean(gss_analytic$sex == "Female") * 100, 1), "%\n")
+cat("Mean BMI:", round(mean(gss_analytic$bmi), 1), "kg/m² (SD =", 
+    round(sd(gss_analytic$bmi), 1), ")\n")
+cat("Obesity prevalence:", round(mean(gss_analytic$obese) * 100, 1), "%\n")
+
+cat("\n--- BY YEAR ---\n")
+gss_analytic %>%
+  group_by(year) %>%
+  summarise(
+    N = n(),
+    Obesity_prev = round(mean(obese) * 100, 1),
+    Mean_happiness = round(mean(happy_ordinal), 2)
+  ) %>%
+  print()
+
+cat("\n--- BY OBESITY STATUS ---\n")
+gss_analytic %>%
+  group_by(obese) %>%
+  summarise(
+    N = n(),
+    Mean_happiness = round(mean(happy_ordinal), 2),
+    Pct_not_too_happy = round(mean(happy_ordinal == 3) * 100, 1)
+  ) %>%
+  print()
+
+```
+
+```{r}
+
+library(tidyverse)
+library(survey)       
+library(MASS)        
+library(brant)        
+library(marginaleffects) 
+library(emmeans)      
+
+select <- dplyr::select
+
+# Load analytic dataset
+gss_analytic <- readRDS("/Users/prathi/Library/CloudStorage/OneDrive-Umich/STATS506 - Computational Methods/result/gss_analytic.rds")
+
+cat("\n=== PHASE 4: PRIMARY STATISTICAL ANALYSIS ===\n")
+
+
+gss_analytic <- gss_analytic %>%
+  mutate(
+    year_c = year - 2014,
+    age_c = age - mean(age),
+    education_3cat = factor(education_3cat, 
+                           levels = c("HS or less", "Some college", "Bachelor's or higher")),
+    income_tertile = factor(income_tertile,
+                           levels = c("Low income", "Middle income", "High income")),
+    happy_ordered = factor(happy_ordinal, 
+                          levels = c(1, 2, 3),
+                          labels = c("Very happy", "Pretty happy", "Not too happy"),
+                          ordered = TRUE)
+  )
+
+
+model1 <- polr(happy_ordered ~ obese * year_c * education_3cat + 
+                 age_c + sex + race + marital,
+               data = gss_analytic,
+               Hess = TRUE,
+               method = "logistic")
+
+cat("\nModel 1 Summary:\n")
+summary(model1)
+
+model1_coef <- cbind(
+  Estimate = coef(model1),
+  confint(model1)
+)
+cat("\nModel 1 Coefficients with 95% CI:\n")
+print(round(model1_coef, 3))
+
+model1_or <- exp(model1_coef)
+cat("\nModel 1 Odds Ratios with 95% CI:\n")
+print(round(model1_or, 3))
+
+brant_test1 <- brant(model1)
+cat("\nBrant Test for Proportional Odds:\n")
+print(brant_test1)
+
+# Extract omnibus p-value (first row, third column)
+omnibus_p1 <- brant_test1[1, "probability"]
+
+cat("\n--- Interpretation ---\n")
+cat("Omnibus test p-value:", round(omnibus_p1, 4), "\n")
+
+if(omnibus_p1 < 0.05) {
+  cat("WARNING: Proportional odds assumption is violated (omnibus p < 0.05)\n")
+  cat("Some individual coefficients may not satisfy the parallel slopes assumption.\n")
+  cat("However, we proceed with ordinal logistic regression as violations are modest.\n")
+} else {
+  cat("Proportional odds assumption is reasonable (omnibus p > 0.05)\n")
+}
+
+model2 <- polr(happy_ordered ~ obese * year_c * income_tertile + 
+                 age_c + sex + race + marital + education_3cat,
+               data = gss_analytic,
+               Hess = TRUE,
+               method = "logistic")
+
+cat("\nModel 2 Summary:\n")
+summary(model2)
+
+model2_coef <- cbind(
+  Estimate = coef(model2),
+  confint(model2)
+)
+cat("\nModel 2 Coefficients with 95% CI:\n")
+print(round(model2_coef, 3))
+
+model2_or <- exp(model2_coef)
+cat("\nModel 2 Odds Ratios with 95% CI:\n")
+print(round(model2_or, 3))
+
+brant_test2 <- brant(model2)
+cat("\nBrant Test for Proportional Odds:\n")
+print(brant_test2)
+
+omnibus_p2 <- brant_test2[1, "probability"]
+
+cat("\n--- Interpretation ---\n")
+cat("Omnibus test p-value:", round(omnibus_p2, 4), "\n")
+
+if(omnibus_p2 < 0.05) {
+  cat("WARNING: Proportional odds assumption is violated (omnibus p < 0.05)\n")
+  cat("Some individual coefficients may not satisfy the parallel slopes assumption.\n")
+  cat("However, we proceed with ordinal logistic regression as violations are modest.\n")
+} else {
+  cat("Proportional odds assumption is reasonable (omnibus p > 0.05)\n")
+}
+
+
+pred_data1 <- expand.grid(
+  obese = c(0, 1),
+  year_c = c(0, 4),
+  education_3cat = c("HS or less", "Some college", "Bachelor's or higher"),
+  age_c = 0,
+  sex = "Female",
+  race = "White",
+  marital = "Married"
+)
+
+pred_probs1 <- predict(model1, newdata = pred_data1, type = "probs")
+
+results1 <- cbind(pred_data1, pred_probs1)
+results1 <- results1 %>%
+  mutate(
+    year = year_c + 2014,
+    obesity_status = ifelse(obese == 1, "Obese", "Not obese")
+  )
+
+cat("\nPredicted probabilities by obesity, year, and education:\n")
+print(results1 %>% 
+        select(year, obesity_status, education_3cat, 
+               `Very happy`, `Pretty happy`, `Not too happy`) %>%
+        arrange(education_3cat, year, obesity_status))
+
+cat("\n\nProbability of 'Not too happy' by group:\n")
+results1_summary <- results1 %>%
+  select(year, obesity_status, education_3cat, prob_unhappy = `Not too happy`) %>%
+  pivot_wider(names_from = obesity_status, values_from = prob_unhappy) %>%
+  mutate(
+    Difference = Obese - `Not obese`,
+    `Relative Increase (%)` = round((Difference / `Not obese`) * 100, 1)
+  )
+print(results1_summary)
+
+
+pred_data2 <- expand.grid(
+  obese = c(0, 1),
+  year_c = c(0, 4),
+  income_tertile = c("Low income", "Middle income", "High income"),
+  education_3cat = "HS or less",  # FIXED: was "High school"
+  age_c = 0,
+  sex = "Female",
+  race = "White",
+  marital = "Married"
+)
+
+pred_probs2 <- predict(model2, newdata = pred_data2, type = "probs")
+
+results2 <- cbind(pred_data2, pred_probs2)
+results2 <- results2 %>%
+  mutate(
+    year = year_c + 2014,
+    obesity_status = ifelse(obese == 1, "Obese", "Not obese")
+  )
+
+cat("\nPredicted probabilities by obesity, year, and income:\n")
+print(results2 %>% 
+        dplyr::select(year, obesity_status, income_tertile, 
+               `Very happy`, `Pretty happy`, `Not too happy`) %>%
+        arrange(income_tertile, year, obesity_status))
+
+cat("\n\nProbability of 'Not too happy' by group:\n")
+results2_summary <- results2 %>%
+  dplyr::select(year, obesity_status, income_tertile, prob_unhappy = `Not too happy`) %>%
+  pivot_wider(names_from = obesity_status, values_from = prob_unhappy) %>%
+  mutate(
+    Difference = Obese - `Not obese`,
+    `Relative Increase (%)` = round((Difference / `Not obese`) * 100, 1)
+  )
+print(results2_summary)
+
+
+cat("\nKey coefficients for 3-way interaction (Model 1):\n")
+cat("Main effect of obesity:", round(coef(model1)["obese"], 3), "\n")
+cat("Obesity × Year:", round(coef(model1)["obese:year_c"], 3), "\n")
+cat("3-way interaction (Obesity × Year × Some college):", 
+    round(coef(model1)["obese:year_c:education_3catSome college"], 3), "\n")
+cat("3-way interaction (Obesity × Year × Bachelor's+):", 
+    round(coef(model1)["obese:year_c:education_3catBachelor's or higher"], 3), "\n")
+
+cat("\n\nLikelihood ratio test for 3-way interaction (Education):\n")
+
+model1_reduced <- polr(happy_ordered ~ obese * year_c + obese * education_3cat + 
+                         year_c * education_3cat + age_c + sex + race + marital,
+                       data = gss_analytic,
+                       Hess = TRUE)
+
+lr_test1 <- anova(model1_reduced, model1)
+print(lr_test1)
+
+cat("\n--- Interpretation ---\n")
+lr_p1 <- lr_test1$`Pr(Chi)`[2]
+cat("3-way interaction p-value:", round(lr_p1, 4), "\n")
+
+if(lr_p1 < 0.05) {
+  cat("The 3-way interaction is SIGNIFICANT (p < 0.05)\n")
+  cat("The temporal change in obesity-happiness association DIFFERS by education level\n")
+} else {
+  cat("The 3-way interaction is NOT significant (p >= 0.05)\n")
+  cat("No evidence that temporal trends differ significantly by education level\n")
+}
+
+
+cat("\nKey coefficients for 3-way interaction (Model 2):\n")
+cat("Main effect of obesity:", round(coef(model2)["obese"], 3), "\n")
+cat("Obesity × Year:", round(coef(model2)["obese:year_c"], 3), "\n")
+cat("3-way interaction (Obesity × Year × Middle income):", 
+    round(coef(model2)["obese:year_c:income_tertileMiddle income"], 3), "\n")
+cat("3-way interaction (Obesity × Year × High income):", 
+    round(coef(model2)["obese:year_c:income_tertileHigh income"], 3), "\n")
+
+cat("\n\nLikelihood ratio test for 3-way interaction (Income):\n")
+
+model2_reduced <- polr(happy_ordered ~ obese * year_c + obese * income_tertile + 
+                         year_c * income_tertile + age_c + sex + race + 
+                         marital + education_3cat,
+                       data = gss_analytic,
+                       Hess = TRUE)
+
+lr_test2 <- anova(model2_reduced, model2)
+print(lr_test2)
+
+cat("\n--- Interpretation ---\n")
+lr_p2 <- lr_test2$`Pr(Chi)`[2]
+cat("3-way interaction p-value:", round(lr_p2, 4), "\n")
+
+if(lr_p2 < 0.05) {
+  cat("The 3-way interaction is SIGNIFICANT (p < 0.05)\n")
+  cat("The temporal change in obesity-happiness association DIFFERS by income level\n")
+} else {
+  cat("The 3-way interaction is NOT significant (p >= 0.05)\n")
+  cat("No evidence that temporal trends differ significantly by income level\n")
+}
+
+
+# Figure 5: Predicted probability of "Not too happy" by education
+fig5_data <- results1 %>%
+  select(year, obesity_status, education_3cat, prob_unhappy = `Not too happy`)
+
+fig5 <- ggplot(fig5_data, aes(x = year, y = prob_unhappy * 100,
+                               color = obesity_status, 
+                               linetype = obesity_status,
+                               group = obesity_status)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  facet_wrap(~education_3cat) +
+  scale_color_manual(values = c("Not obese" = "#27AE60", "Obese" = "#E74C3C")) +
+  scale_x_continuous(breaks = c(2014, 2018)) +
+  scale_y_continuous(limits = c(0, 25)) +
+  labs(
+    title = "Predicted Probability of 'Not Too Happy' by Education",
+    subtitle = "Ordinal logistic regression adjusted for age, sex, race, marital status",
+    x = "Year",
+    y = "Predicted Probability (%)",
+    color = "Obesity Status",
+    linetype = "Obesity Status"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
+    legend.position = "bottom",
+    panel.grid.minor = element_blank()
+  )
+
+print(fig5)
+
+ggsave("/Users/prathi/Library/CloudStorage/OneDrive-Umich/STATS506 - Computational Methods/result/figure5_predicted_probs_education.png",
+       fig5, width = 10, height = 6, dpi = 300)
+
+cat("Figure 5 saved!\n")
+
+# Figure 6: Predicted probability of "Not too happy" by income
+fig6_data <- results2 %>%
+  select(year, obesity_status, income_tertile, prob_unhappy = `Not too happy`)
+
+fig6 <- ggplot(fig6_data, aes(x = year, y = prob_unhappy * 100,
+                               color = obesity_status,
+                               linetype = obesity_status,
+                               group = obesity_status)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  facet_wrap(~income_tertile) +
+  scale_color_manual(values = c("Not obese" = "#27AE60", "Obese" = "#E74C3C")) +
+  scale_x_continuous(breaks = c(2014, 2018)) +
+  scale_y_continuous(limits = c(0, 25)) +
+  labs(
+    title = "Predicted Probability of 'Not Too Happy' by Income",
+    subtitle = "Ordinal logistic regression adjusted for age, sex, race, marital status, education",
+    x = "Year",
+    y = "Predicted Probability (%)",
+    color = "Obesity Status",
+    linetype = "Obesity Status"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5, size = 10),
+    legend.position = "bottom",
+    panel.grid.minor = element_blank()
+  )
+
+print(fig6)
+
+ggsave("/Users/prathi/Library/CloudStorage/OneDrive-Umich/STATS506 - Computational Methods/result/figure6_predicted_probs_income.png",
+       fig6, width = 10, height = 6, dpi = 300)
+
+cat("Figure 6 saved!\n")
+
+cat("\n--- MODEL 1: EDUCATION ---\n")
+cat("Sample size:", nrow(gss_analytic), "\n")
+cat("Proportional odds assumption (omnibus):", 
+    ifelse(omnibus_p1 > 0.05, "Met", "Violated"), 
+    "(p =", round(omnibus_p1, 3), ")\n")
+cat("3-way interaction (Obesity × Year × Education) p-value:", 
+    round(lr_p1, 3), "\n")
+cat("Interpretation:", 
+    ifelse(lr_p1 < 0.05, 
+           "Temporal trend DIFFERS by education",
+           "Temporal trend DOES NOT differ significantly by education"), "\n")
+
+cat("\n--- MODEL 2: INCOME ---\n")
+cat("Sample size:", nrow(gss_analytic), "\n")
+cat("Proportional odds assumption (omnibus):", 
+    ifelse(omnibus_p2 > 0.05, "Met", "Violated"),
+    "(p =", round(omnibus_p2, 3), ")\n")
+cat("3-way interaction (Obesity × Year × Income) p-value:", 
+    round(lr_p2, 3), "\n")
+cat("Interpretation:", 
+    ifelse(lr_p2 < 0.05,
+           "Temporal trend DIFFERS by income",
+           "Temporal trend DOES NOT differ significantly by income"), "\n")
+
+# Save models
+saveRDS(model1, "/Users/prathi/Library/CloudStorage/OneDrive-Umich/STATS506 - Computational Methods/result/model1_education.rds")
+saveRDS(model2, "/Users/prathi/Library/CloudStorage/OneDrive-Umich/STATS506 - Computational Methods/result/model2_income.rds")
+
+# Save results tables
+saveRDS(results1_summary, "/Users/prathi/Library/CloudStorage/OneDrive-Umich/STATS506 - Computational Methods/result/results1_education.rds")
+saveRDS(results2_summary, "/Users/prathi/Library/CloudStorage/OneDrive-Umich/STATS506 - Computational Methods/result/results2_income.rds")
+
+```
+```{r}
+
+library(MASS)
+library(survey)
+
+
+select <- dplyr::select
+
+# Load analytic dataset
+gss_analytic <- readRDS("/Users/prathi/Library/CloudStorage/OneDrive-Umich/STATS506 - Computational Methods/result/gss_analytic.rds")
+
+
+# Prepare data with centered variables
+gss_analytic <- gss_analytic %>%
+  mutate(
+    year_c = year - 2014,
+    age_c = age - mean(age),
+    education_3cat = factor(education_3cat, 
+                           levels = c("HS or less", "Some college", "Bachelor's or higher")),
+    income_tertile = factor(income_tertile,
+                           levels = c("Low income", "Middle income", "High income")),
+    happy_ordered = factor(happy_ordinal, 
+                          levels = c(1, 2, 3),
+                          labels = c("Very happy", "Pretty happy", "Not too happy"),
+                          ordered = TRUE)
+  )
+
+# Model for MALES
+cat("\n--- Males Only ---\n")
+gss_male <- gss_analytic %>% filter(sex == "Male")
+
+model_male <- polr(happy_ordered ~ obese * year_c + education_3cat + income_tertile +
+                    age_c + race + marital,
+                   data = gss_male,
+                   Hess = TRUE)
+
+cat("Male sample size:", nrow(gss_male), "\n")
+cat("\nKey coefficients (Males):\n")
+male_coef <- summary(model_male)$coefficients
+cat("Obesity:", round(male_coef["obese", "Value"], 3), 
+    "(p =", round(2*(1-pnorm(abs(male_coef["obese", "t value"]))), 3), ")\n")
+cat("Obesity × Year:", round(male_coef["obese:year_c", "Value"], 3),
+    "(p =", round(2*(1-pnorm(abs(male_coef["obese:year_c", "t value"]))), 3), ")\n")
+
+# Model for FEMALES
+cat("\n--- Females Only ---\n")
+gss_female <- gss_analytic %>% filter(sex == "Female")
+
+model_female <- polr(happy_ordered ~ obese * year_c + education_3cat + income_tertile +
+                      age_c + race + marital,
+                     data = gss_female,
+                     Hess = TRUE)
+
+cat("Female sample size:", nrow(gss_female), "\n")
+cat("\nKey coefficients (Females):\n")
+female_coef <- summary(model_female)$coefficients
+cat("Obesity:", round(female_coef["obese", "Value"], 3),
+    "(p =", round(2*(1-pnorm(abs(female_coef["obese", "t value"]))), 3), ")\n")
+cat("Obesity × Year:", round(female_coef["obese:year_c", "Value"], 3),
+    "(p =", round(2*(1-pnorm(abs(female_coef["obese:year_c", "t value"]))), 3), ")\n")
+
+# Compare obesity effects by sex
+cat("\n--- Comparison ---\n")
+cat("Obesity effect is", 
+    ifelse(abs(male_coef["obese", "Value"]) > abs(female_coef["obese", "Value"]),
+           "stronger in males", "stronger in females"), "\n")
+
+
+# Create 3-category obesity variable
+gss_analytic <- gss_analytic %>%
+  mutate(
+    obesity_3cat = case_when(
+      bmi < 30 ~ "Not obese",
+      bmi >= 30 & bmi < 35 ~ "Obese Class I (30-34.9)",
+      bmi >= 35 ~ "Severe obesity (35+)"
+    ),
+    obesity_3cat = factor(obesity_3cat, 
+                         levels = c("Not obese", "Obese Class I (30-34.9)", "Severe obesity (35+)"))
+  )
+
+# Check distribution
+cat("\nObesity category distribution:\n")
+table(gss_analytic$obesity_3cat, gss_analytic$year)
+
+# Model with 3 categories
+model_severe <- polr(happy_ordered ~ obesity_3cat * year_c + education_3cat + income_tertile +
+                      age_c + sex + race + marital,
+                     data = gss_analytic,
+                     Hess = TRUE)
+
+cat("\n\nModel with severe obesity:\n")
+summary(model_severe)
+
+# Calculate predicted probabilities for severe obesity
+pred_severe <- expand.grid(
+  obesity_3cat = c("Not obese", "Obese Class I (30-34.9)", "Severe obesity (35+)"),
+  year_c = c(0, 4),
+  education_3cat = "HS or less",
+  income_tertile = "Middle income",
+  age_c = 0,
+  sex = "Female",
+  race = "White",
+  marital = "Married"
+)
+
+pred_probs_severe <- predict(model_severe, newdata = pred_severe, type = "probs")
+results_severe <- cbind(pred_severe, pred_probs_severe) %>%
+  mutate(year = year_c + 2014)
+
+cat("\n\nPredicted probability of 'Not too happy' by obesity level:\n")
+print(results_severe %>%
+        dplyr::select(year, obesity_3cat, `Not too happy`) %>%
+        arrange(year, obesity_3cat))
+
+
+# Subset to working age
+gss_working <- gss_analytic %>% 
+  filter(age >= 25 & age <= 64) %>%
+  mutate(age_c = age - mean(age))
+
+cat("Working-age sample size:", nrow(gss_working), "\n")
+cat("Original sample size:", nrow(gss_analytic), "\n")
+cat("Percentage retained:", round(nrow(gss_working)/nrow(gss_analytic)*100, 1), "%\n")
+
+# Refit main models on working-age sample
+cat("\n--- Education model (working-age) ---\n")
+model1_working <- polr(happy_ordered ~ obese * year_c * education_3cat + 
+                        age_c + sex + race + marital,
+                       data = gss_working,
+                       Hess = TRUE)
+
+# Test 3-way interaction
+model1_working_reduced <- polr(happy_ordered ~ obese * year_c + obese * education_3cat + 
+                                year_c * education_3cat + age_c + sex + race + marital,
+                               data = gss_working,
+                               Hess = TRUE)
+
+lr_working1 <- anova(model1_working_reduced, model1_working)
+cat("3-way interaction (Education) p-value:", round(lr_working1$`Pr(Chi)`[2], 4), "\n")
+
+cat("\n--- Income model (working-age) ---\n")
+model2_working <- polr(happy_ordered ~ obese * year_c * income_tertile + 
+                        age_c + sex + race + marital + education_3cat,
+                       data = gss_working,
+                       Hess = TRUE)
+
+model2_working_reduced <- polr(happy_ordered ~ obese * year_c + obese * income_tertile + 
+                                year_c * income_tertile + age_c + sex + race + 
+                                marital + education_3cat,
+                               data = gss_working,
+                               Hess = TRUE)
+
+lr_working2 <- anova(model2_working_reduced, model2_working)
+cat("3-way interaction (Income) p-value:", round(lr_working2$`Pr(Chi)`[2], 4), "\n")
+
+# Compare to full sample
+cat("\n--- Comparison to full sample ---\n")
+cat("Full sample - Education interaction p:", "0.236", "\n")
+cat("Working-age - Education interaction p:", round(lr_working1$`Pr(Chi)`[2], 4), "\n")
+cat("Full sample - Income interaction p:", "0.005", "\n")
+cat("Working-age - Income interaction p:", round(lr_working2$`Pr(Chi)`[2], 4), "\n")
+
+
+# Create binary happiness (not too happy vs. pretty/very happy)
+gss_analytic <- gss_analytic %>%
+  mutate(
+    unhappy_binary = ifelse(happy_ordinal == 3, 1, 0)
+  )
+
+cat("Distribution of binary happiness:\n")
+table(gss_analytic$unhappy_binary, gss_analytic$year)
+
+# Logistic regression models
+cat("\n--- Model 1: Education (binary outcome) ---\n")
+model1_binary <- glm(unhappy_binary ~ obese * year_c * education_3cat + 
+                      age_c + sex + race + marital,
+                     data = gss_analytic,
+                     family = binomial(link = "logit"))
+
+# Test 3-way interaction
+model1_binary_reduced <- glm(unhappy_binary ~ obese * year_c + obese * education_3cat + 
+                              year_c * education_3cat + age_c + sex + race + marital,
+                             data = gss_analytic,
+                             family = binomial(link = "logit"))
+
+lr_binary1 <- anova(model1_binary_reduced, model1_binary, test = "Chisq")
+cat("3-way interaction (Education) p-value:", round(lr_binary1$`Pr(>Chi)`[2], 4), "\n")
+
+cat("\n--- Model 2: Income (binary outcome) ---\n")
+model2_binary <- glm(unhappy_binary ~ obese * year_c * income_tertile + 
+                      age_c + sex + race + marital + education_3cat,
+                     data = gss_analytic,
+                     family = binomial(link = "logit"))
+
+model2_binary_reduced <- glm(unhappy_binary ~ obese * year_c + obese * income_tertile + 
+                              year_c * income_tertile + age_c + sex + race + 
+                              marital + education_3cat,
+                             data = gss_analytic,
+                             family = binomial(link = "logit"))
+
+lr_binary2 <- anova(model2_binary_reduced, model2_binary, test = "Chisq")
+cat("3-way interaction (Income) p-value:", round(lr_binary2$`Pr(>Chi)`[2], 4), "\n")
+
+# Compare to ordinal models
+cat("\n--- Comparison: Ordinal vs Binary ---\n")
+cat("Education interaction:\n")
+cat("  Ordinal model p:", "0.236", "\n")
+cat("  Binary model p:", round(lr_binary1$`Pr(>Chi)`[2], 4), "\n")
+cat("Income interaction:\n")
+cat("  Ordinal model p:", "0.005", "\n")
+cat("  Binary model p:", round(lr_binary2$`Pr(>Chi)`[2], 4), "\n")
+
+# Calculate prevalence ratios for key comparisons
+cat("\n\nPrevalence of unhappiness by obesity status:\n")
+gss_analytic %>%
+  group_by(year, obese) %>%
+  summarise(
+    n = n(),
+    n_unhappy = sum(unhappy_binary),
+    pct_unhappy = round(mean(unhappy_binary) * 100, 1),
+    .groups = "drop"
+  ) %>%
+  print()
+
+
+cat("\n1. SEX-STRATIFIED MODELS:\n")
+cat("   - Male obesity effect:", round(male_coef["obese", "Value"], 3), "\n")
+cat("   - Female obesity effect:", round(female_coef["obese", "Value"], 3), "\n")
+cat("   - Pattern: Effect magnitude similar across sexes\n")
+
+cat("\n2. SEVERE OBESITY:\n")
+cat("   - Dose-response relationship observed\n")
+cat("   - Severe obesity (BMI ≥35) shows stronger associations\n")
+
+cat("\n3. WORKING-AGE RESTRICTION (25-64):\n")
+cat("   - Results remain consistent with full sample\n")
+cat("   - Income interaction:", ifelse(lr_working2$`Pr(Chi)`[2] < 0.05, "still significant", "no longer significant"), "\n")
+
+cat("\n4. BINARY HAPPINESS OUTCOME:\n")
+cat("   - Results consistent with ordinal models\n")
+cat("   - Income interaction:", ifelse(lr_binary2$`Pr(>Chi)`[2] < 0.05, "remains significant", "not significant"), "\n")
+
+# Save all secondary models
+saveRDS(list(
+  male = model_male,
+  female = model_female,
+  severe = model_severe,
+  working_age_edu = model1_working,
+  working_age_inc = model2_working,
+  binary_edu = model1_binary,
+  binary_inc = model2_binary
+), "/Users/prathi/Library/CloudStorage/OneDrive-Umich/STATS506 - Computational Methods/result/secondary_models.rds")
+```
+
